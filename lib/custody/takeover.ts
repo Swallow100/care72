@@ -17,7 +17,8 @@ import type { OfficeActor } from "../office/scope.ts";
 import { officePayload } from "../office/timeline.ts";
 import { shortJst } from "../disaster/state.ts";
 import { DEMO_OFFICE_ID, isSeedOfficeId, SEED_OFFICE_IDS } from "../auth/demo.ts";
-import { demoRegisteredSql } from "../auth/wall.ts";
+import { demoRegisteredSql, sandboxRegisteredSql } from "../auth/wall.ts";
+import { isSandboxOfficeId } from "../office/sandbox-id.ts";
 import { UNAFFILIATED_OFFICE_ID } from "./actor.ts";
 
 export type UnaffiliatedItem = {
@@ -34,15 +35,18 @@ export type UnaffiliatedItem = {
 
 /**
  * 引き受ける人から見える所属なしの人（壁）。種の事業所（デモ事業所・確認用の事業所、T144）は自分の事業所のアカウントの登録だけ、
- * 審査員の壁の中でほかの事業所にいる人（試用事業所 T115）はデモ事業所の登録だけ、ほかの事業所はどの種の事業所の登録も出さない
+ * 審査員の試用事業所（T115）はその試用事業所のアカウントの登録だけ（T180。前はデモ事業所の登録）、
+ * ほかに審査員の壁の中でほかの事業所にいる人はデモ事業所の登録だけ、ほかの事業所はどの種の事業所の登録も出さない
  */
 export type UnaffiliatedViewer = Pick<OfficeActor, "officeId" | "walled">;
 
 /** SQL の条件（alias は people の別名） */
 function registeredBy(viewer: UnaffiliatedViewer, alias = "p"): string {
   if (isSeedOfficeId(viewer.officeId)) return demoRegisteredSql(alias, viewer.officeId);
+  // 審査員の試用事業所（T180）: その試用事業所のアカウント（新規事業所の医療班の役）が登録した人だけ。デモの登録と混ぜない
+  if (viewer.walled === true && isSandboxOfficeId(viewer.officeId)) return demoRegisteredSql(alias, viewer.officeId);
   if (viewer.walled === true) return demoRegisteredSql(alias, DEMO_OFFICE_ID);
-  return `NOT ${demoRegisteredSql(alias, SEED_OFFICE_IDS)}`;
+  return `NOT ${demoRegisteredSql(alias, SEED_OFFICE_IDS)} AND NOT ${sandboxRegisteredSql(alias)}`;
 }
 
 /** 所属なしの人（その場で登録した人）。登録の新しい順。viewer は引き受ける人（officeActor。壁と事業所で出す人が変わる） */

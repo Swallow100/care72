@@ -28,6 +28,39 @@ export function isJudgeSessionRole(v: unknown): v is JudgeSessionRole {
   return typeof v === "string" && (JUDGE_SESSION_ROLES as readonly string[]).includes(v);
 }
 
+/**
+ * 新規事業所の中の役（T180）。審査員のセッションの b の事業所の中で、足したケアマネ・医療班・足した利用者の本人・その家族に替える。
+ * id はケアマネならアカウント、本人なら people、家族なら contacts の id。医療班は相手を持たない（受け持つのは新規事業所の管理者のアカウント）。
+ * 管理者（b）の役は「新規事業所」（SANDBOX_CHOICE）のまま
+ */
+export type SandboxTarget =
+  | { role: "care_manager"; id: string }
+  | { role: "medical" }
+  | { role: "self"; id: string }
+  | { role: "family"; id: string };
+
+/** 役の一覧のフォームの値の区切り（sandbox:self:<id>） */
+const SANDBOX_SEP = ":";
+/** フォームから受ける id の形（英数字と - _ . だけ、128 字まで）。中身は毎回 D1 で確かめる（lib/auth/principal.ts） */
+const TARGET_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+/** 新規事業所の中の役のフォームの値 */
+export function sandboxChoiceValue(t: SandboxTarget): string {
+  return t.role === "medical" ? `${SANDBOX_CHOICE}${SANDBOX_SEP}medical` : `${SANDBOX_CHOICE}${SANDBOX_SEP}${t.role}${SANDBOX_SEP}${t.id}`;
+}
+
+/** フォームの値から新規事業所の中の役。形が違えば null（「新規事業所」そのものも null。そちらは isJudgeSessionRole） */
+export function parseSandboxChoice(v: unknown): SandboxTarget | null {
+  if (typeof v !== "string" || v.length > 200) return null;
+  const parts = v.split(SANDBOX_SEP);
+  if (parts[0] !== SANDBOX_CHOICE) return null;
+  if (parts.length === 2 && parts[1] === "medical") return { role: "medical" };
+  if (parts.length !== 3 || !TARGET_ID.test(parts[2])) return null;
+  const [, role, id] = parts;
+  if (role === "care_manager" || role === "self" || role === "family") return { role, id };
+  return null;
+}
+
 /** 役の一覧の「新規事業所」の言葉と、作った事業所の初めの名前（審査員が /office で直せる） */
 export const SANDBOX_LABELS = {
   choice: "新規事業所",
