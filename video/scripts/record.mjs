@@ -358,7 +358,7 @@ async function staff(browser) {
   await r13.start();
   await sleep(2000);
   r13.mark("避難所");
-  await med.type('[data-field="shelter"]', "かわなぎ小学校", { delay: 90 });
+  await med.type('[data-field="shelter"]', "福音小学校", { delay: 90 });
   await sleep(800);
   r13.mark("検索");
   if (!(await med.$('form[data-form="search"]'))) {
