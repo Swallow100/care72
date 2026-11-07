@@ -213,7 +213,7 @@ describe("手なしの移動", () => {
     it("記録に無い移動の言葉を落とす。移れる人の刻みの言葉は残す。頼み事は残す", () => {
       const cannot = slipContextOf(factsFor("p-02"), "home");
       for (const s of ["計画どおり病院へ移ります。", "母を病院へ車で移します。", "病院に行きます。"]) expect(sentenceSlip(s, cannot)).toBe("move_said");
-      for (const s of ["病院へ移りたいです。", "病院へ移る段取りを頼みます。", "病院に行けません。", "病院へ移る手だてをお願いします。"]) expect(sentenceSlip(s, cannot)).toBeNull();
+      for (const s of ["病院へ移りたいです。", "病院へ移る段取りを頼みます。", "病院に行けません。", "病院へ移る手だてをお願いします。", "計画では病院に移ります。", "計画では指定避難所に行く予定です。"]) expect(sentenceSlip(s, cannot)).toBeNull();
       const can = slipContextOf(factsFor("p-10"), "home");
       expect(sentenceSlip("これから避難所へ歩いて移ります。", can)).toBeNull();
       expect(sentenceSlip("避難先に移りました。", can)).toBe("place_text");
@@ -232,6 +232,12 @@ describe("手なしの移動", () => {
       expect(sentenceSlip("移送の車はまだ来ません。", none)).toBeNull();
       const world: WorldState = { ...EMPTY_WORLD, arrivals: [{ person: "p-08", role: "transport", arrive: 500, back: 500, arrived: true, from: "action" }] };
       expect(sentenceSlip("移送の車が来ました。", slipContextOf(factsFor("p-08", { world }), "home"))).toBeNull();
+    });
+
+    it("移った人の「家におります」「今は家です」を落とす（通話をまたいでも記録のいる所で見る）", () => {
+      const moved = factsFor("p-10", { state: state({ at: 5, moved: { to: "shelter", at: 300, by: "plan" } }) });
+      for (const s of ["今も家におります。", "今は家です。", "家のままです。"]) expect(sentenceSlip(s, talkContextOf(moved))).toBe("place_text");
+      expect(sentenceSlip("実家です。", talkContextOf(moved))).toBeNull();
     });
 
     it("避難所にいる人の「病院に移りました」を落とす", () => {
@@ -294,6 +300,8 @@ describe("呼び出しの数", () => {
     expect(seatRounds(["r1", "r2"], isRound, (p) => p === "r2", 4)).toEqual(["r1", "r2"]);
     expect(seatRounds(["a", "b", "c", "d", "r1"], isRound, () => true, 4)).toEqual(["a", "b", "c", "d", "r1"]);
     expect(seatRounds(["a", "b"], isRound, never, 4)).toEqual(["a", "b"]);
+    // 1 区切りに呼ぶ人数を超えては残さない（残すと次の区切りで別の理由に化ける）
+    expect(seatRounds(["a", "b", "c", "d", "e", "r1", "r2", "r3"], isRound, never, 4, 6)).toEqual(["a", "b", "c", "d", "e", "r1"]);
   });
 
   it("いる所を聞く言葉は記録で答える。記録の無い人・ほかの問いは本人役", () => {

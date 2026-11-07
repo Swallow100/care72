@@ -1041,7 +1041,7 @@ export async function advance(
         const gap = to - (lastCalled[p] ?? 0);
         return gap >= ROUND_QUIET_MINUTES + ROUND_HOLD_MINUTES || (gap >= ROUND_MINUTES + ROUND_HOLD_MINUTES && changedSince(world, p, lastCalled[p] ?? 0));
       };
-      const seated = new Set(seatRounds([...order].sort((a, b) => (lastCalled[a] ?? 0) - (lastCalled[b] ?? 0)), isRound, overdue, PERSONA_BATCH_MAX));
+      const seated = new Set(seatRounds([...order].sort((a, b) => (lastCalled[a] ?? 0) - (lastCalled[b] ?? 0)), isRound, overdue, PERSONA_BATCH_MAX, PERSONA_PER_CUT));
       for (const p of [...order]) if (!seated.has(p)) order.splice(order.indexOf(p), 1);
     }
     order.sort((a, b) => rank(a) - rank(b) || (touched[a] ?? to) - (touched[b] ?? to) || live.indexOf(a) - live.indexOf(b));

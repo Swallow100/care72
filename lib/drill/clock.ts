@@ -221,14 +221,14 @@ export const PERSONA_BATCH_MAX = 4;
 
 /**
  * 巡回だけの人を呼び出しの空きに相乗りさせる（T177）。order は前に呼んだのが古い順に並べた呼ぶ候補。ほかの理由の人で開く呼び出しの空きの分だけ巡回の人を残す。
- * 待ちすぎた巡回の人がいて空きが足りなければ、呼び出しを 1 つ開く。残す人の並びは order のまま
+ * 待ちすぎた巡回の人がいて空きが足りなければ、呼び出しを 1 つ開く。1 区切りに呼ぶ人数（room）を超えては残さない。残す人の並びは order のまま
  */
-export function seatRounds<T>(order: ReadonlyArray<T>, isRound: (p: T) => boolean, overdue: (p: T) => boolean, batch: number): T[] {
+export function seatRounds<T>(order: ReadonlyArray<T>, isRound: (p: T) => boolean, overdue: (p: T) => boolean, batch: number, room: number = Number.POSITIVE_INFINITY): T[] {
   const others = order.filter((p) => !isRound(p)).length;
   const rounds = order.filter(isRound);
   let seats = others > 0 ? Math.ceil(others / batch) * batch - others : 0;
   if (seats < rounds.length && rounds.some(overdue)) seats += batch;
-  const kept = new Set(rounds.slice(0, seats));
+  const kept = new Set(rounds.slice(0, Math.max(0, Math.min(seats, room - others))));
   return order.filter((p) => !isRound(p) || kept.has(p));
 }
 

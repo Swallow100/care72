@@ -1081,7 +1081,7 @@ export function addGated(world: WorldState, add: Partial<Record<GateRule, number
  * 帳面にある人の通話で、この言い方が門を抜けた）
  */
 const HOME_STAY =
-  /(?:家|自宅|うち)で(?:過ご(?!せ)|休ん|休み|待っ|待ち|待つ|寝て|様子を見|付き添|つきそ|横にな|横たわ|寝たまま|座っ|座り|話せ|話し(?!合)|動け|落ち着|元気|いつも|普段|変わり|受け答|答え)|(?:家|自宅|うち)で(?![はもの])[^。、]{0,14}?(?:できる|でき(?:ています|ます)|います|ている|ます)[。！!]?$|(?:家|自宅|うち)に(?:い|居)(?:ます|る|て)|家から出ていない|家に残っ|(?:家|自宅|うち)に(?:は)?[^。、置]{0,8}?(?:二人|ふたり|三人)(?:です|でい|だけ|きり)|(?:家|自宅|うち)(?:に|で)(?:は)?一緒に(?:い|居)/;
+  /(?:家|自宅|うち)で(?:過ご(?!せ)|休ん|休み|待っ|待ち|待つ|寝て|様子を見|付き添|つきそ|横にな|横たわ|寝たまま|座っ|座り|話せ|話し(?!合)|動け|落ち着|元気|いつも|普段|変わり|受け答|答え)|(?:家|自宅|うち)で(?![はもの])[^。、]{0,14}?(?:できる|でき(?:ています|ます)|います|ている|ます)[。！!]?$|(?:家|自宅|うち)に(?:い|居)(?:ます|る|て)|(?:家|自宅|うち)に(?:おり|おる|おって)|(?:^|[はも、。])(?:家|自宅)(?:です|のままです)|家から出ていない|家に残っ|(?:家|自宅|うち)に(?:は)?[^。、置]{0,8}?(?:二人|ふたり|三人)(?:です|でい|だけ|きり)|(?:家|自宅|うち)(?:に|で)(?:は)?一緒に(?:い|居)/;
 /**
  * 病院へ移った・病院にいる言い方（T167。家にいる人は言わない）。評価の 8 回目で、ふだん動けない人の家族が手も人も無いまま病院へ移ったと言い、
  * 帳面は家のままで、次の連絡では家で業者を迎えた。これから移る言い方（「移ろうと思います」）は見ない
@@ -1107,6 +1107,8 @@ const MOVE_FUTURE = new RegExp(
   `${MOVE_PLACE}(?:へ|に|まで)${GO_GAP}(?:向かいます|向かう(?!か)|向かおう|行きます|行く(?!か|の|ん|べ)|行こう|いきます|移ります|移る(?!か|の|ん|手|先|所|人|段|方)|移ろう|移します|移す(?!か|の|ん|手|段|方)|移動します|移動する(?!か|の|手)|送ります|送る(?!か|の)|連れて行きます|連れていきます)|避難(?:します|しよう)`,
   "u",
 );
+/** 計画の中身を説明する言い方（T177。「計画では避難所に行く予定です」は移ると言った事にしない） */
+const PLAN_TALK = /計画では|予定です|予定になって/u;
 /** 移ったと言う言い方のうち AT_SHELTER・AT_HOSPITAL の外の物（T177。家にいる人は言わない） */
 const MOVED_SAID = new RegExp(`${MOVE_PLACE}(?:に|へ)(?:着きました|着いた|移りました|移った|移れました|入りました|来たよ|来ました)|家から移っ|移送の車で[^。、]{0,8}?移(?:りました|った)`, "u");
 /** 移送の車が来た言い方（T177。来ていない車を来たと言わない。「来たら」「来ません」は見ない） */
@@ -1393,7 +1395,7 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
   // 記録に無い移動（T177）。家にいる人の「避難先に移りました」、避難所にいる人の「病院に移りました」、移れない人の「移ります」、来ていない移送の車
   if (ctx.place === "home" && MOVED_SAID.test(t) && !RETURNED.test(t)) return "place_text";
   if (ctx.place === "shelter" && AT_HOSPITAL.test(t) && !RETURNED.test(t)) return "place_text";
-  if (ctx.noMove && MOVE_FUTURE.test(t) && !GO_NOT.test(t)) return "move_said";
+  if (ctx.noMove && MOVE_FUTURE.test(t) && !GO_NOT.test(t) && !PLAN_TALK.test(t)) return "move_said";
   if (ctx.rideCame === false && RIDE_CAME.test(t)) return "move_said";
   if (roadSlip(t, ctx)) return "road_said";
   // 停電が戻ったあとに、まだ続いていると言う（T167。世界の停電の復旧と家の電気を食い違わせない）
@@ -1649,7 +1651,7 @@ export function startsMove(f: Facts, texts: ReadonlyArray<string | null | undefi
   if ((f.place?.where ?? "home") !== "home" || f.moving || !canLeaveHome(f)) return false;
   return texts.some((x) => {
     const t = (x ?? "").normalize("NFKC");
-    return t !== "" && (MOVE_FUTURE.test(t) || GO_INTENT.test(t)) && !GO_NOT.test(t) && !RETURNED.test(t);
+    return t !== "" && (MOVE_FUTURE.test(t) || GO_INTENT.test(t)) && !GO_NOT.test(t) && !PLAN_TALK.test(t) && !RETURNED.test(t);
   });
 }
 
