@@ -11,6 +11,7 @@
 
 import * as z from "zod";
 import { askJson, type AskJsonContext, type AskJsonRequest } from "../claude/call.ts";
+import { OPUS, type PurposeSpec } from "../claude/models.ts";
 import { AiBadOutput, AiCallFailed, AiLimitReached, AiNotConfigured, AiRefused } from "../claude/errors.ts";
 import type { DrillScenario, DrillStatus } from "../db/types.ts";
 import { COLOR_LABELS } from "../labels.ts";
@@ -68,7 +69,27 @@ export type ReviewFinding = {
   basis: SourceId | null;
 };
 
-export type ReviewBody = { summary: string; findings: ReviewFinding[] };
+/**
+ * 全体の講評の項目（T185）。連絡の順・電話の聞き取りと伝え方・訪問と手配・報告（市と様式 9）・時計と機器。良かった所は good に別に
+ */
+export const REVIEW_TOPICS = ["order", "talk", "visit", "report", "clock"] as const;
+export type ReviewTopic = (typeof REVIEW_TOPICS)[number];
+export type ReviewSection = { topic: ReviewTopic; text: string };
+
+/**
+ * 講評の本体。sections・good は T185 から（前に保存した講評には無い。無ければ今までの総評と指摘だけを出す）
+ */
+export type ReviewBody = { summary: string; findings: ReviewFinding[]; sections?: ReviewSection[]; good?: string[] };
+
+/** 項目ごとの文・良かった所の字数（指示に書く数と、切る数） */
+export const SECTION_ASK = 120;
+export const SECTION_TEXT_MAX = 200;
+export const GOOD_MAX = 3;
+export const GOOD_ASK = 60;
+export const GOOD_TEXT_MAX = 100;
+
+/** 項目の中身の無いときの言葉（画面はこの項目を出さない） */
+export const SECTION_NONE = "該当なし";
 
 /** 講評の失敗（lib/claude の失敗の名前。画面と記録に残す） */
 export type ReviewError = "not_configured" | "limit" | "refused" | "bad_output" | "failed" | "leak";
@@ -123,10 +144,8 @@ const labelsWhere = (f: (r: ActionRow) => boolean) =>
 const ROAD_BOUND = (r: ActionRow) =>
   r.decide.type === "visit" || r.decide.type === "dispatch" || (r.decide.type === "arrange" && r.effects.some((e) => e.kind === "arrival"));
 
-export const REVIEW_SYSTEM = [
-  "災害の訓練（発災から 72 時間。人は全部架空）の講評を書く。ケアマネが打った手の順番と選び方（空振り・重複・頼み事への対応）、市役所への報告の時刻、",
-  "様式 9（災害時利用者一覧表）の空欄、着信への応答を、機械で数えた結果と手の履歴から振り返り、次の訓練で直す所を示す。入力は JSON の「記録」。",
-  "",
+/** 手の言葉と、事実で結果の決まる手（全体の講評と人ごとの講評〔T185〕で同じ物） */
+export const REVIEW_WORLD_LINES: ReadonlyArray<string> = [
   `手の言葉（表の手の名前。これのほかの手を書かない）: ${REVIEW_ACTION_LABELS.join("・")}`,
   "",
   "事実で結果の決まる手（世界の返事の決まり）:",
@@ -137,6 +156,13 @@ export const REVIEW_SYSTEM = [
   `- 道 通行止: ${labelsWhere(ROAD_BOUND)}は届かない`,
   "- 職員 0: 事業所の職員への訪問依頼は出せない（訪問看護への訪問依頼は別）",
   "- 透析先 休止: その透析施設への透析調整・電話は受けられない",
+];
+
+export const REVIEW_SYSTEM = [
+  "災害の訓練（発災から 72 時間。人は全部架空）の講評を書く。ケアマネが打った手の順番と選び方（空振り・重複・頼み事への対応）、市役所への報告の時刻、",
+  "様式 9（災害時利用者一覧表）の空欄、着信への応答を、機械で数えた結果と手の履歴から振り返り、次の訓練で直す所を示す。入力は JSON の「記録」。",
+  "",
+  ...REVIEW_WORLD_LINES,
   "",
   "返す JSON:",
   `- summary: 全体の講評（${SUMMARY_ASK} 字まで）。次の訓練で試す事を 1〜2 つ。`,
@@ -145,6 +171,9 @@ export const REVIEW_SYSTEM = [
   "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・choice（手の選び方。空振り・重複・頼み事への対応）・other のどれか。",
   `  - text: 行動についての 1 文（${FINDING_ASK} 字まで）。いつ・誰に・どの手を打てばよかったかを、上の手の言葉で書く。`,
   `  - basis: 根拠の出典の id。当てはまる物が無ければ「${NO_BASIS}」。`,
+  `- sections: 項目ごとの講評の配列。項目は ${REVIEW_TOPICS.join("・")} の順に 1 つずつ（いつも 5 つ）。各 ${SECTION_ASK} 字まで。その項目で良かった手と、次の訓練で試す事を、機械の数・手の履歴・人ごとの講評の要旨から、時刻と手の名前で具体的に書く。その項目の中身が訓練に無ければ text を「${SECTION_NONE}」とだけ。`,
+  "  - topic: order（連絡の順。左の表の上から手が届いたか）・talk（電話の聞き取りと伝え方。通話の言葉から、聞けた事・伝えた事・聞き漏らした事）・visit（訪問と手配。届いたか・空振り・重複・頼み事への対応）・report（市役所への報告の時刻と様式 9 の空欄）・clock（時計の期限までに手が届いたか）のどれか。",
+  `- good: 良かった所の配列（${GOOD_MAX} つまで、1 つ ${GOOD_ASK} 字まで）。手の名前と時刻で具体的に。無ければ空の配列。`,
   "",
   "決まり:",
   "1. 数字は機械で数えた物。数え直さない・変えない・新しい数字を作らない。",
@@ -169,14 +198,25 @@ export const ReviewSchema = z.object({
       basis: z.string(),
     }),
   ),
+  // T185。前の形の返事（偽の AI・前の評価の写し）も読めるように任意（指示ではいつも返させる）
+  sections: z.array(z.object({ topic: z.string(), text: z.string() })).optional(),
+  good: z.array(z.string()).optional(),
 });
 
 export type ReviewAnswer = z.output<typeof ReviewSchema>;
 
-/** Claude に渡す要求。入力は伏せた文だけ（型で縛る）。モデルと考える深さは用途 scoring の既定（Opus） */
+/**
+ * 全体の講評の呼び方（T185）。用途は scoring（ai_calls の CHECK はそのまま）。Opus・medium: 人ごとの講評（訓練の間に Haiku）を
+ * 入力に使い、出力に項目ごとの文と良かった所が増えた分を、考える深さを high から下げて最後の待ち（T141 で 24〜28 秒）に収める。
+ * 待ちと上限は用途 scoring の既定のまま（16000・180 秒）
+ */
+export const REVIEW_SPEC: PurposeSpec = { model: OPUS, effort: "medium", maxTokens: 16000, timeoutMs: 180_000 };
+
+/** Claude に渡す要求。入力は伏せた文だけ（型で縛る）。モデルと考える深さは REVIEW_SPEC（Opus・medium） */
 export function buildReviewRequest(record: ForClaude<{ text: string }>): AskJsonRequest<typeof ReviewSchema> {
   return {
     purpose: "scoring",
+    spec: REVIEW_SPEC,
     system: REVIEW_SYSTEM,
     input: { 記録: record },
     schema: ReviewSchema,
@@ -202,7 +242,12 @@ export type ReviewContext = {
   ticks?: ReadonlyArray<TickWorld>;
   /** 終わりの世界の頼み事（通話の往復で頼まれた物。T93） */
   asks?: Readonly<Record<string, ReadonlyArray<Ask>>>;
+  /** 人ごとの講評の要旨（T185。訓練の間に作った物。無い人は機械の数だけ） */
+  persons?: ReadonlyArray<PersonDigest>;
 };
+
+/** 全体の講評に渡す人ごとの講評の要旨（T185。氏名は入れない。本人は id で、文にするときに仮名にする） */
+export type PersonDigest = { person: string; good: ReadonlyArray<string>; next: ReadonlyArray<string> };
 
 const SCENE_WORDS = { heavy_rain: "大雨（警戒レベル 3 → 4 → 浸水）", earthquake: "地震（南海トラフ 震度 6強・津波・停電）" } as const;
 /** 仮想モード（T50）: 街の出来事は世界の部屋が刻みごとに決めた（固定の筋が無い） */
@@ -361,12 +406,38 @@ export function reviewText(
   lines.push(
     "",
     "手の履歴（時刻は発災から。色と順位はその手の前の左の表。［事実］はその手を打った時に分かっていた事、→ のあとは結果）:",
+    ...historyLines(ctx, who),
   );
+
+  // 人ごとの講評の要旨（T185。訓練の間に人ごとに作った物。良かった手と次に試す事だけ）
+  const digests = (ctx.persons ?? []).filter((d) => aliasOf.has(d.person) && (d.good.length > 0 || d.next.length > 0));
+  if (digests.length > 0) {
+    lines.push("", "人ごとの講評の要旨（訓練の間に人ごとに作った物。数字は上の機械の数が正）:");
+    for (const d of digests) {
+      const parts = [d.good.length > 0 ? `良: ${d.good.join(" / ")}` : null, d.next.length > 0 ? `次: ${d.next.join(" / ")}` : null].filter(Boolean);
+      lines.push(`- ${who(d.person)}: ${parts.join("。")}`);
+    }
+  }
+
+  if (opts.words) lines.push(...talkWordsSection(ctx, who, opts.words));
+
+  lines.push("", "状況（想定の表と監督の差し込み）:");
+  if (ctx.incidents.length === 0) lines.push("- なし");
+  for (const e of ctx.incidents) lines.push(`- ${minuteText(Math.round(e.at * 60))} ${e.text}${e.person && aliasOf.has(e.person) ? `（${who(e.person)}）` : ""}`);
+  return lines.join("\n");
+}
+
+/**
+ * 手の履歴と着信の行（時刻の順、「- 」付き）。only を渡すとその人への手と、その人の着信だけ（人ごとの講評、T185）
+ */
+export function historyLines(ctx: Pick<ReviewContext, "score" | "actions" | "calls" | "ticks" | "asks">, who: (p: string | null | undefined) => string, only?: string): string[] {
+  const s = ctx.score;
   type Line = { at: number; order: number; text: string };
   const hist: Line[] = [];
   const wasted = new Set((s.wasted?.rows ?? []).map((r) => r.action));
   const repeated = new Set((s.repeat?.rows ?? []).map((r) => r.action));
   ctx.actions.forEach((a, i) => {
+    if (only !== undefined && a.person !== only) return;
     const t = a.before.triage;
     const color = triageWord(t?.color);
     const before = a.person ? `（${[color, t?.rank != null ? `${t.rank} 位` : null].filter(Boolean).join(" ") || "色なし"}）` : "";
@@ -405,6 +476,7 @@ export function reviewText(
     });
   });
   ctx.calls.forEach((x, i) => {
+    if (only !== undefined && x.person !== only) return;
     const res = x.response === "answer" ? "出た" : x.response === "decline" ? "出なかった" : "未応答";
     const color = x.color === "red" ? "赤" : x.color === "green" ? "緑" : "安否不明";
     // 着信の往復（T127）は数だけ（ケアマネの文と相手の言葉は講評に渡さない）
@@ -412,15 +484,8 @@ export function reviewText(
     hist.push({ at: x.minute, order: i * 2 + 1, text: `${minuteText(x.minute)} 着信 ${who(x.person)}（${color}）→ ${res}${rounds > 0 ? `・${rounds} 往復話した` : ""}` });
   });
   hist.sort((a, b) => a.at - b.at || a.order - b.order);
-  if (hist.length === 0) lines.push("- なし");
-  for (const h of hist) lines.push(`- ${h.text}`);
-
-  if (opts.words) lines.push(...talkWordsSection(ctx, who, opts.words));
-
-  lines.push("", "状況（想定の表と監督の差し込み）:");
-  if (ctx.incidents.length === 0) lines.push("- なし");
-  for (const e of ctx.incidents) lines.push(`- ${minuteText(Math.round(e.at * 60))} ${e.text}${e.person && aliasOf.has(e.person) ? `（${who(e.person)}）` : ""}`);
-  return lines.join("\n");
+  if (hist.length === 0) return ["- なし"];
+  return hist.map((h) => `- ${h.text}`);
 }
 
 /** 講評に渡す通話の言葉の行の長さと数（T155。長い会話で入力が膨らまないように） */
@@ -431,17 +496,24 @@ export const REVIEW_TALK_LINES_MAX = 60;
  * 通話の言葉（T155）。外へ掛けた電話と掛かってきた電話の往復を、時刻の順に通話ごとに。自分の言葉は「自分」（声で入れた物は「自分（声）」）、
  * 相手は区分の言葉。words で検査した行だけ（伏せきれない行は渡さない）。行の数と長さに上限
  */
-function talkWordsSection(ctx: ReviewContext, who: (p: string | null | undefined) => string, words: (t: string) => string | null): string[] {
+export function talkWordsSection(
+  ctx: Pick<ReviewContext, "actions" | "calls">,
+  who: (p: string | null | undefined) => string,
+  words: (t: string) => string | null,
+  only?: string,
+): string[] {
   type Call = { at: number; head: string; talk: ReadonlyArray<TalkLine> };
   const calls: Call[] = [];
   for (const a of ctx.actions) {
     const talk = a.result?.talk ?? [];
     if (talk.length === 0) continue;
+    if (only !== undefined && a.person !== only) continue;
     calls.push({ at: a.atMinute, head: `${minuteText(a.atMinute)} 発信 ${who(a.person)}（${a.calleeLabel ?? "相手"}）`, talk });
   }
   for (const c of ctx.calls) {
     const talk = c.talk ?? [];
     if (talk.length === 0) continue;
+    if (only !== undefined && c.person !== only) continue;
     calls.push({ at: c.minute, head: `${minuteText(c.minute)} 着信 ${who(c.person)}（${c.callee?.label ?? "相手"}）`, talk });
   }
   if (calls.length === 0) return [];
@@ -578,6 +650,44 @@ export function reviewWords(raw: string, key: PseudonymKey, max: number): string
   return Array.from(restoreText(masked, key)).slice(0, max).join("");
 }
 
+/**
+ * 数文の文の検査（T185。人ごとの講評・項目ごとの文）。「。」で割り、使わない言葉に掛かった文だけ捨てる（1 語で全部を落とさない）。
+ * 残りの文をつないで reviewWords に通す。何も残らなければ null
+ */
+export function reviewSentences(raw: string, key: PseudonymKey, max: number): string | null {
+  const parts = raw
+    .replace(/\s+/g, " ")
+    .split(/(?<=。)/)
+    .map((x) => x.trim())
+    .filter((x) => x && !reviewBanned(x));
+  if (parts.length === 0) return null;
+  return reviewWords(parts.join(""), key, max);
+}
+
+const isReviewTopic = (v: string): v is ReviewTopic => (REVIEW_TOPICS as readonly string[]).includes(v);
+
+/** 項目ごとの文と良かった所を読む（T185）。知らない項目・重ねた項目・検査に掛かった文は捨て、項目の順に並べる */
+export function reviewSections(
+  answer: Pick<ReviewAnswer, "sections" | "good">,
+  key: PseudonymKey,
+): { sections: ReviewSection[]; good: string[] } {
+  const got = new Map<ReviewTopic, string>();
+  for (const s of answer.sections ?? []) {
+    const topic = s.topic.trim();
+    if (!isReviewTopic(topic) || got.has(topic)) continue;
+    const text = reviewSentences(s.text, key, SECTION_TEXT_MAX);
+    if (text) got.set(topic, text);
+  }
+  const sections = REVIEW_TOPICS.filter((t) => got.has(t)).map((t) => ({ topic: t, text: got.get(t)! }));
+  const good: string[] = [];
+  for (const g of answer.good ?? []) {
+    if (good.length >= GOOD_MAX) break;
+    const text = reviewSentences(g, key, GOOD_TEXT_MAX);
+    if (text && !good.some((x) => sameWording(x, text))) good.push(text);
+  }
+  return { sections, good };
+}
+
 const isReviewKind = (v: string): v is ReviewKind => (REVIEW_KINDS as readonly string[]).includes(v);
 
 /**
@@ -618,7 +728,14 @@ export function reviewBody(
   // 重い順に並べる（T141。同じ種類の中は返った順）
   const rank = (k: ReviewKind) => (REVIEW_WEIGHT.indexOf(k) < 0 ? REVIEW_WEIGHT.length : REVIEW_WEIGHT.indexOf(k));
   const ordered = findings.map((f, i) => ({ f, i })).sort((a, b) => rank(a.f.kind) - rank(b.f.kind) || a.i - b.i).map((x) => x.f);
-  return { summary: reviewWords(answer.summary, ctx.key, SUMMARY_MAX) ?? "", findings: ordered };
+  // 項目ごとの文と良かった所（T185。残った物だけ。無ければ前の形のまま）
+  const { sections, good } = reviewSections(answer, ctx.key);
+  return {
+    summary: reviewWords(answer.summary, ctx.key, SUMMARY_MAX) ?? "",
+    findings: ordered,
+    ...(sections.length > 0 ? { sections } : {}),
+    ...(good.length > 0 ? { good } : {}),
+  };
 }
 
 // ---------- 呼び口 ----------
@@ -647,19 +764,29 @@ export function reviewError(e: unknown): ReviewError | null {
  * 講評を 1 回作る。参加者を並びの順に A さん・B さん…と伏せ、記録の文を pseudonymizeText に通して Opus に渡す。
  * 指摘も要約も残らなければ形の違い（bad_output）
  */
+/**
+ * 講評の仮名の鍵（参加者を並びの順に A さん・B さん…）。全体の講評と人ごとの講評（T185）で同じ仮名になる
+ */
+export function reviewKeyOf(
+  deps: Pick<ReviewDeps, "sources" | "on"> & { ai: Pick<AskJsonContext, "office"> },
+  participants: ReadonlyArray<string>,
+): { key: PseudonymKey; members: string[]; aliasOf: Map<string, string> } {
+  const members = participants.filter((p) => deps.sources.has(p));
+  const list = members.map((p) => deps.sources.get(p)!);
+  // 町名は地区の別名で渡す（T88。記録の文の町名〔世界の出来事・結末の理由〕も、参加者の台帳の町名から作った別名に）
+  const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
+  const { key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
+  return { key, members, aliasOf: new Map(key.people.map((p) => [p.personId, p.alias])) };
+}
+
 export async function createReview(deps: ReviewDeps, ctx: ReviewContext): Promise<ReviewOutcome> {
   try {
-    const members = ctx.score.participants.filter((p) => deps.sources.has(p));
-    const list = members.map((p) => deps.sources.get(p)!);
-    // 町名は地区の別名で渡す（T88。記録の文の町名〔世界の出来事・結末の理由〕も、参加者の台帳の町名から作った別名に）
-    const places = officePlaces(deps.ai.office.id, list.map((x) => x.ledger));
-    const { key } = pseudonymize(list, { ...(deps.on ? { on: deps.on } : {}), places });
-    const aliasOf = new Map(key.people.map((p) => [p.personId, p.alias]));
+    const { key, members, aliasOf } = reviewKeyOf(deps, ctx.score.participants);
     // 通話の言葉（T155）は 1 行ずつ伏せられるかを見て、伏せきれない行は渡さない（講評ごと止めない）
     const record = pseudonymizeText(reviewText(ctx, aliasOf, { words: (t) => maskReply(t, key) }), key);
     const r = await askJson(buildReviewRequest(record), deps.ai);
     const body = reviewBody(r.value, { key, members: new Set(members), max: findingRoom(ctx.score), rooms: findingRooms(ctx.score) });
-    if (!body.summary && body.findings.length === 0) return { ok: false, error: "bad_output" };
+    if (!body.summary && body.findings.length === 0 && !body.sections?.length) return { ok: false, error: "bad_output" };
     return { ok: true, body, model: r.model };
   } catch (e) {
     const code = reviewError(e);

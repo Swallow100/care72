@@ -8,7 +8,7 @@ import { SEED_PEOPLE, type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import type { ClaudeClient } from "../claude/client.ts";
-import { OPUS } from "../claude/models.ts";
+import { HAIKU, OPUS } from "../claude/models.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import type { DrillAction, DrillScenario } from "../db/types.ts";
 import { findLeaks, pseudonymize, type PseudonymInput } from "../pseudonym/index.ts";
@@ -52,6 +52,9 @@ function fake(answer: (p: Params) => Message) {
   };
   return { client, calls };
 }
+
+/** 全体の講評（Opus）の呼び出しだけ（終わりに人ごとの講評〔T185、Haiku〕も並べて呼ぶ） */
+const opusCalls = (cs: Params[]) => cs.filter((p) => p.model === OPUS);
 
 const systemOf = (p: Params) => (p.system as Array<{ text: string }>).map((b) => b.text).join("\n");
 
@@ -276,11 +279,11 @@ describe("講評（Opus 1 回）", () => {
 
   it("仮名だけを渡し、登録簿に無い根拠・医療の助言・知らない仮名の指摘は捨てる。仮名は氏名に戻して残す。2 回目は呼ばない", async () => {
     await finishedWithActions();
-    const f = fake(() => reply(ANSWER, OPUS));
+    const f = fake((p) => (p.model === HAIKU ? reply({ text: "本人への本人電話は早かった。", good: [], next: [] }, HAIKU) : reply(ANSWER, OPUS)));
     const res = await reviewPost(ENV(), careManager(), "d1", {}, { claude: f.client, now: () => new Date(LATER) });
     expect(res.status).toBe(200);
-    expect(f.calls).toHaveLength(1);
-    const p = f.calls[0];
+    expect(opusCalls(f.calls)).toHaveLength(1);
+    const p = opusCalls(f.calls)[0];
     expect(p.model).toBe(OPUS);
     expect(systemOf(p)).toContain(REVIEW_SYSTEM);
     expect(systemOf(p)).toContain("nanbyo-tsuiho-2022");
@@ -304,11 +307,11 @@ describe("講評（Opus 1 回）", () => {
     expect(shown.findings[0].text).not.toMatch(/[A-Z] ?さん/);
     expect(shown.summary).not.toMatch(/[A-Z] ?さん/);
     // 用途 scoring で 1 日の上限に数える
-    expect(sqlite.prepare("SELECT purpose, status FROM ai_calls").all()).toEqual([{ purpose: "scoring", status: "ok" }]);
+    expect(sqlite.prepare("SELECT purpose, status FROM ai_calls WHERE model = ?").all(OPUS)).toEqual([{ purpose: "scoring", status: "ok" }]);
     // できていれば 2 回目は呼ばない
     const again = await reviewPost(ENV(), careManager(), "d1", {}, { claude: f.client });
     expect(again.status).toBe(200);
-    expect(f.calls).toHaveLength(1);
+    expect(opusCalls(f.calls)).toHaveLength(1);
   });
 
   it("ケアマネが直した講評は別に残し、AI の元は消さない。指摘を空にすると外れる", async () => {
@@ -342,13 +345,13 @@ describe("講評（Opus 1 回）", () => {
     const ok = fake(() => reply(ANSWER, OPUS));
     const busy = await reviewPost(ENV(), careManager(), "d1", {}, { claude: ok.client });
     expect(await busy.json()).toMatchObject({ ok: true, review: { state: "pending" } });
-    expect(ok.calls).toHaveLength(0);
+    expect(opusCalls(ok.calls)).toHaveLength(0);
     // 作成中が古ければ取り直す
     sqlite
       .prepare("UPDATE drills SET score = json_set(score, '$.review', json(?)) WHERE id = 'd1'")
       .run(JSON.stringify({ state: "pending", at: "2026-11-01T00:00:00.000Z" }));
     expect((await reviewPost(ENV(), careManager(), "d1", {}, { claude: ok.client })).status).toBe(200);
-    expect(ok.calls).toHaveLength(1);
+    expect(opusCalls(ok.calls)).toHaveLength(1);
   });
 
   it("進行中の訓練は 409、ほかの役 403、事業所の外 404", async () => {
