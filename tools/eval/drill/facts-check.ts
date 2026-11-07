@@ -39,6 +39,7 @@ import type { ActionRecord } from "../../../lib/drill/action-types.ts";
 import type { PersonState } from "../../../lib/drill/persona-types.ts";
 import type { WorldState } from "../../../lib/drill/scenarios.ts";
 import { REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
+import { clockStartOf, startHourOf } from "../../../lib/drill/night.ts";
 import { LOST_MAX_MINUTES } from "../../../lib/drill/lost.ts";
 import { AREA_GAP_MINUTES } from "../../../lib/drill/time-odds.ts";
 import type { CheckHit } from "./checks.ts";
@@ -116,6 +117,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   const actions = r.actions as unknown as ActionRecord[];
   let checked = 0;
   const hit = (rule: GateRule | FactExtraRule, person: string | null, minute: number | null, evidence: string) => hits.push({ check: "facts", rule, person, minute, evidence });
+  // 発災の時刻（T177。門と同じ。夜間発災は深夜 2 時、ほかは開始の時刻。切れた時刻の言葉 clock_said は sentenceFix が直す形で数える）
+  const startHour = clockStartOf({ night: outcome.plan.night === true, startHour: outcome.startedAt ? startHourOf(outcome.startedAt) : null });
   const factsAt = (person: string, prev: PersonState | null, minute: number) => {
     const p = people[person];
     return factsOf({
@@ -128,6 +131,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       inOutage: inOutage(world, p),
       together: p?.together ?? [],
       kin: p?.kin ?? null,
+      startHour,
     });
   };
 

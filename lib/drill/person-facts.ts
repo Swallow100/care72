@@ -19,6 +19,7 @@ import type { DrillTurn, PersonState } from "./persona-types.ts";
 import type { AskKind, WorldState } from "./scenarios.ts";
 import { minuteText } from "./time-text.ts";
 import { clipWords } from "./clip.ts";
+import { clockOfMinute, clockWhen } from "./night.ts";
 
 // ---------- 計画（台帳から） ----------
 
@@ -312,6 +313,8 @@ export type FactsInput = {
    * 無ければ自由の言葉は帳面の文に書かない（決まった問い・指示の言葉だけ）
    */
   mask?: (text: string) => string | null;
+  /** 発災の時刻（時。T177、night.ts の clockStartOf）。あれば帳面の時刻を時計の言い方で渡す。無ければ経過の数のまま */
+  startHour?: number | null;
 };
 
 /** 来た人・届いた物・会えた手 1 つ（発災からの分） */
@@ -352,6 +355,8 @@ export type PlaceBy = "turn" | "transport" | "plan" | "wandering" | "found";
 export type Facts = {
   person: string;
   now: number;
+  /** 発災の時刻（時。T177）。無ければ帳面の時刻は経過の数 */
+  startHour?: number | null;
   plan: Plan | null;
   /**
    * いる所と時刻（T139 で出どころを足した）。turn 前の連絡（緑はいる所、赤は「家にいるか」）・transport 移送の車が着いた（避難先の種類へ）・
@@ -701,6 +706,7 @@ export function factsOf(input: FactsInput): Facts {
   return {
     person,
     now,
+    ...(input.startHour != null ? { startHour: input.startHour } : {}),
     plan,
     place,
     prevAt,
@@ -806,51 +812,70 @@ export function remainChoices(d: DeviceNow): number[] {
 const DOWN_WORDS = "止まっている間は緑（無事）を押さない。連絡は赤で、落ち着いたままとは言わない。する事・様子も、機器が止まった事が分かる言い方に。機器と電源の事実だけを言い、体の具合の重さは言わない";
 
 /**
+ * 帳面の時刻の言い方（T177）。時計が分かれば「16 時ごろ（3 時間前）」。今より後は「（あと 2 時間）」。今は「（今）」。
+ * 評価の 10 回目で、帳面の経過の数を本人役が時計の時刻として言った（同じ人の連絡の中でも形が変わった）
+ */
+export function whenWordsOf(f: Pick<Facts, "startHour" | "now">): (minute: number) => string {
+  const start = f.startHour;
+  if (typeof start !== "number") return minuteText;
+  return (m) => {
+    const gap = f.now - m;
+    return `${clockWhen(m, start, f.now)}（${gap === 0 ? "今" : gap > 0 ? `${minuteText(gap)}前` : `あと ${minuteText(-gap)}`}）`;
+  };
+}
+
+/** 切れた時刻の言い方の決まり（T177） */
+const cutSay = (f: Pick<Facts, "startHour">): string =>
+  typeof f.startHour === "number" ? "言う時は書いた時計の時刻か「N 時間前」のどちらかで。ほかの時刻を作らない" : "言う時は切れた時刻も添える";
+
+/**
  * 帳面の文（Claude に渡す前。呼ぶ側が仮名化の門を通す）。言った事は決まった印の言い方だけ（本人役の言葉そのものは書かない）
  */
 export function factLines(f: Facts): string[] {
   const out: string[] = [];
   const where = placeWords(f);
+  // 時刻の言い方（T177）。時計が分かれば「16 時ごろ（3 時間前）」、分からなければ経過の数のまま
+  const at = whenWordsOf(f);
   if (f.place && where) {
     out.push(
       f.place.by === "wandering"
-        ? `いる所: ${where}（${minuteText(f.place.at)}${PLACE_BY_WORDS.wandering}。まだ見つかっていない。家にいるとは言わない）`
-        : `いる所: ${where}（${minuteText(f.place.at)}${PLACE_BY_WORDS[f.place.by ?? "turn"]}）${f.plan?.immobile && f.place.where === "home" ? "。ふだん自分で動けないので、手伝う人か乗り物が来るまで家にいる（家の外にいるとは言わない）" : ""}`,
+        ? `いる所: ${where}（${at(f.place.at)}${PLACE_BY_WORDS.wandering}。まだ見つかっていない。家にいるとは言わない）`
+        : `いる所: ${where}（${at(f.place.at)}${PLACE_BY_WORDS[f.place.by ?? "turn"]}）${f.plan?.immobile && f.place.where === "home" ? "。ふだん自分で動けないので、手伝う人か乗り物が来るまで家にいる（家の外にいるとは言わない）" : ""}`,
     );
   }
-  if (f.rideAfter !== undefined) out.push(`移送の車: ${minuteText(f.rideAfter)}に来たが、もう避難所にいるので乗らない（「迎えの車で着いた」と言わない）`);
+  if (f.rideAfter !== undefined) out.push(`移送の車: ${at(f.rideAfter)}に来たが、もう避難所にいるので乗らない（「迎えの車で着いた」と言わない）`);
   if (f.going && f.place?.by !== "plan" && f.place?.by !== "transport") {
     out.push(
       f.going.can
-        ? `移動: ${minuteText(f.going.at)}に避難先へ向かうと言った（計画の手段で ${minuteText(f.going.at + GO_MINUTES)}ごろ着く）`
-        : `移動: ${minuteText(f.going.at)}に避難先へ向かうと言ったが、${f.going.why === "blocked" ? blockedWords(f) : GO_WHY_WORDS[f.going.why ?? "plan"]}（まだ家。向かえていない理由を言う）`,
+        ? `移動: ${at(f.going.at)}に避難先へ向かうと言った（計画の手段で ${at(f.going.at + GO_MINUTES)}ごろ着く）`
+        : `移動: ${at(f.going.at)}に避難先へ向かうと言ったが、${f.going.why === "blocked" ? blockedWords(f) : GO_WHY_WORDS[f.going.why ?? "plan"]}（まだ家。向かえていない理由を言う）`,
     );
   }
   // 通れない訳（T174）。言うならこの訳だけ。水につかっていないのに水と言わない
   if (f.blocked && f.blockedBy && (f.blockedBy.roads.length > 0 || f.blockedBy.flooded)) out.push(`家の辺りの道: ${blockedWords(f)}。通れない訳を言うならこれだけ${f.dryRoad ? "（水につかっていない。水のせいと言わない）" : ""}`);
   else if (f.dryRoad) out.push("家の辺りの道: 通れる。水につかっていない（水のせいと言わない）");
-  if (f.withPerson) out.push(`そばの人: ${f.withPerson.by === "family" ? "家族" : "支援者"}が本人の所にいる・見たと伝えた（${minuteText(f.withPerson.at)}）。様子が分からないとは言わない`);
+  if (f.withPerson) out.push(`そばの人: ${f.withPerson.by === "family" ? "家族" : "支援者"}が本人の所にいる・見たと伝えた（${at(f.withPerson.at)}）。様子が分からないとは言わない`);
   if (f.hurt) {
     const what = [f.hurt.canMove === false ? "動けない" : null, f.hurt.injured === true ? "けが" : null].filter(Boolean).join("・");
-    out.push(`前に言った事: ${what}（${minuteText(f.hurt.at)}）。${f.help ? `そのあと ${f.help.what}が来た（${minuteText(f.help.at)}）` : "そのあと誰も来ていない・手も届いていない"}`);
+    out.push(`前に言った事: ${what}（${at(f.hurt.at)}）。${f.help ? `そのあと ${f.help.what}が来た（${at(f.help.at)}）` : "そのあと誰も来ていない・手も届いていない"}`);
   }
-  out.push(`来た人・届いた物: ${f.got.length > 0 ? f.got.map((h) => `${h.what}（${minuteText(h.at)}）`).join("、") : "まだ無い"}`);
+  out.push(`来た人・届いた物: ${f.got.length > 0 ? f.got.map((h) => `${h.what}（${at(h.at)}）`).join("、") : "まだ無い"}`);
   for (const p of f.promised ?? []) {
-    out.push(`前に言った予定（まだ済んでいない）: ${INTENT_WORDS[p.kind]}（${minuteText(p.at)}に言った）。済んだなら結果を、できないなら訳を言う。同じ予定を新しく言い直さない`);
+    out.push(`前に言った予定（まだ済んでいない）: ${INTENT_WORDS[p.kind]}（${at(p.at)}に言った）。済んだなら結果を、できないなら訳を言う。同じ予定を新しく言い直さない`);
   }
-  if (f.voiceLost) out.push(`本人の声: 家族・支援者が「声が無い・返事が無い」と伝えた（${minuteText(f.voiceLost.at)}）。人が来るまで本人は話さない`);
+  if (f.voiceLost) out.push(`本人の声: 家族・支援者が「声が無い・返事が無い」と伝えた（${at(f.voiceLost.at)}）。人が来るまで本人は話さない`);
   if (f.told.length > 0) {
-    out.push(`ケアマネに言われた事（覚えて従う。従えない時は理由を言う）: ${f.told.map((t) => `${minuteText(t.at)}「${t.words}」`).join("、")}`);
+    out.push(`ケアマネに言われた事（覚えて従う。従えない時は理由を言う）: ${f.told.map((t) => `${at(t.at)}「${t.words}」`).join("、")}`);
   }
   if (f.together.length > 0) out.push(`同居の人（もう家にいる。あとから「来た」と言わない）: ${f.together.join("・")}`);
-  if (f.power.outage === "on") out.push(`電気: 停電中（${minuteText(f.power.since ?? 0)}から）${f.power.supplied !== null ? `。電源が届いた（${minuteText(f.power.supplied)}）` : ""}`);
-  else if (f.power.outage === "restored") out.push(`電気: 戻った（${minuteText(f.power.restoredAt ?? 0)}）。電池・電源を頼まない`);
+  if (f.power.outage === "on") out.push(`電気: 停電中（${at(f.power.since ?? 0)}から）${f.power.supplied !== null ? `。電源が届いた（${at(f.power.supplied)}）` : ""}`);
+  else if (f.power.outage === "restored") out.push(`電気: 戻った（${at(f.power.restoredAt ?? 0)}）。電池・電源を頼まない`);
   for (const d of f.devices) {
     // 電気が戻った・電源が届いた（T141）。停電の間に切れた事は済んだ事で、今は電気で動いている
     if (typeof d.backAt === "number") {
       const how = f.power.restoredAt === d.backAt ? "停電が戻り、今は電気で動いている" : "電源が届き、今は届いた電源で動いている（停電は続いている。電気が戻ったとは言わない）";
       out.push(
-        `${d.label}: ${minuteText(d.backAt)}に${how}${d.outAt !== null ? `（停電の間に内蔵の電池が ${minuteText(d.outAt)}に切れた${d.spare ? "。予備に替えた" : ""}。済んだ事で、今は切れていない・止まっていない。「切れた」と言わない）` : ""}`,
+        `${d.label}: ${at(d.backAt)}に${how}${d.outAt !== null ? `（停電の間に内蔵の電池が ${at(d.outAt)}に切れた${d.spare ? "。予備に替えた" : ""}。済んだ事で、今は切れていない・止まっていない。「切れた」と言わない）` : ""}`,
       );
       continue;
     }
@@ -859,17 +884,17 @@ export function factLines(f: Facts): string[] {
       const r = d.remain;
       const s = f.plan?.spares.find((x) => x.category === d.category) ?? null;
       out.push(
-        `${d.label}: 停電で内蔵の電池で動いている。残り ${minuteText(d.dueAt - f.now)}（${minuteText(d.dueAt)}ごろ切れる）${s ? `。切れたら${s.label}に替える${r?.total != null ? `（合わせた残り ${minuteText(r.total)}${s.assumed ? "、見込み" : ""}）` : "（予備の時間は分からない）"}` : "。予備は無い"}`,
+        `${d.label}: 停電で内蔵の電池で動いている。残り ${minuteText(d.dueAt - f.now)}（${at(d.dueAt)}ごろ切れる）${s ? `。切れたら${s.label}に替える${r?.total != null ? `（合わせた残り ${minuteText(r.total)}${s.assumed ? "、見込み" : ""}）` : "（予備の時間は分からない）"}` : "。予備は無い"}`,
       );
     }
     if (d.outAt !== null) {
       if (d.spare) {
         const spareOut = d.spare.outAt !== null && d.spare.outAt <= f.now;
         out.push(
-          `${d.label}: ${minuteText(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}。残りを言う時は「予備に替えた」と添える）${spareOut ? `。予備も ${minuteText(d.spare.outAt!)}に切れた（言う時は切れた時刻も添える）${d.down ? `。${DOWN_WORDS}` : ""}` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${minuteText(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
+          `${d.label}: ${at(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}。残りを言う時は「予備に替えた」と添える）${spareOut ? `。予備も ${at(d.spare.outAt!)}に切れた（${cutSay(f)}）${d.down ? `。${DOWN_WORDS}` : ""}` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${at(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
         );
       } else if (d.down) {
-        out.push(`${d.label}: ${minuteText(d.outAt)}に切れた（言う時は切れた時刻も添える）。予備は無く、電源が届くか停電が戻るまで戻らない（${DOWN_WORDS}）`);
+        out.push(`${d.label}: ${at(d.outAt)}に切れた（${cutSay(f)}）。予備は無く、電源が届くか停電が戻るまで戻らない（${DOWN_WORDS}）`);
       }
       // 一度起きた事（T141）。前の連絡より前に切れた物は、新しい事のように言わない
       if (d.known) out.push(`${d.label}が切れたのは前の連絡より前（もう起きた事）。新しい事のように「切れました」と言わない。言うなら「切れたまま」`);
@@ -937,6 +962,7 @@ export const GATE_RULES = [
   "backstage", // 訓練の裏側の言葉（問いの途中・この訓練・演じる。落とした。T165）
   "power_said", // 停電の戻りと家の電気の食い違い（届いた電源を「電気が戻った」と言う〔直した〕・戻ったあとに「まだ停電」と言う〔落とした〕。T167）
   "road_said", // 道の開通と言葉の食い違い（閉じているのに通れた・開いたのに通れない・土砂の人が水を訳に挙げる。落とした。T174）
+  "clock_said", // 機器の切れた時刻の言葉が帳面の時計と食い違う（帳面の時刻に直した。T177）
 ] as const;
 export type GateRule = (typeof GATE_RULES)[number];
 
@@ -1107,6 +1133,8 @@ export type SlipContext = {
   roadClosed?: boolean;
   /** 土砂の人で家の辺りは水につかっていない（T174）。水を訳に挙げない */
   dryRoad?: boolean;
+  /** 機器の切れた時刻（発災からの分。T177）と発災の時刻・今。あれば切れた時刻の言葉を時計で見る */
+  cutClock?: { startHour: number; now: number; cuts: ReadonlyArray<{ minute: number; spare: boolean }> };
 };
 
 /** 予備に替えたあと、予備で動いている機器か（T158） */
@@ -1117,6 +1145,16 @@ export const onSpareNow =
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const relOf = (role: string) => role.replace(/[ 　]*\d+$/u, "").trim();
+
+/** 切れた時刻（T177）。電気が戻った機器の切れた時刻も、済んだ話として言うので入れる。時計か切れた時刻が無ければ見ない */
+function cutClockOf(f: Facts): Pick<SlipContext, "cutClock"> {
+  if (typeof f.startHour !== "number") return {};
+  const cuts = f.devices.flatMap((d) => [
+    ...(d.outAt !== null ? [{ minute: d.outAt, spare: false }] : []),
+    ...(d.spare && d.spare.outAt !== null && d.spare.outAt <= f.now ? [{ minute: d.spare.outAt, spare: true }] : []),
+  ]);
+  return cuts.length > 0 ? { cutClock: { startHour: f.startHour, now: f.now, cuts } } : {};
+}
 
 export function slipContextOf(f: Facts, place: WhereNow | null = f.place?.where ?? null): SlipContext {
   const plan = f.plan;
@@ -1137,6 +1175,7 @@ export function slipContextOf(f: Facts, place: WhereNow | null = f.place?.where 
     outageRestored: f.power.outage === "restored",
     ...(f.blocked !== undefined ? { roadClosed: f.blocked } : {}),
     ...(f.dryRoad ? { dryRoad: true } : {}),
+    ...cutClockOf(f),
     // 電池の残りの数（T141）。停電の区域で停電で減る機器のある人だけ見る
     ...(f.power.outage !== "none" && f.devices.length > 0
       ? { remains: f.devices.flatMap(remainChoices), say: f.devices.map(sayMinutes).find((x) => x !== null) ?? null, oldOut: f.devices.some((d) => d.known === true) }
@@ -1275,6 +1314,46 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
   return null;
 }
 
+/** 切れた・止まった話の文（T177。これから切れる話は見ない） */
+const CUT_TOPIC = /(?:電池|バッテリー|予備|ボンベ|呼吸器|濃縮器|吸引器|酸素|機械|機器)[^。]*?(?:切れ|止ま)(?!る前|そう|かけ|たら|れば|りそう)/u;
+/** 言葉の中の時計の時刻（「午後 4 時」「十一時」。「4 時間」は見ない）。m[1] 数 */
+const CLOCK_SAID = /(?:午前|午後|朝|昼|夕方|夜|深夜|未明|明け方)?\s*(\d{1,2}|[一二三四五六七八九十]+)\s*時(?!間)(?:\s*\d{1,2}\s*分|半)?/u;
+/** 言葉の中の「N 時間前」（T177） */
+const AGO_SAID = new RegExp(`(${NUM})\\s*時間(半)?前`, "u");
+/** 12 時間の時計で見た差（「4 時」は 16 時とも読める。午前・午後の無い話し言葉なので 12 時間の差は比べない） */
+const dial = (a: number, b: number): number => {
+  const d = Math.abs(a - b) % 12;
+  return Math.min(d, 12 - d);
+};
+
+/**
+ * 切れた時刻の言葉を帳面の時計で見る（T177）。評価の 10 回目で形が 3 つ出た: 時計に直して正しい・経過の数をそのまま時刻として言う・計算が違う。
+ * 切れた話の文の時計の時刻が帳面の切れた時刻のどれとも 1 時間より離れていれば、帳面の時刻に直す。「N 時間前」も同じ（1 時間か 4 分の 1 の幅）。門と台が同じに見る
+ */
+function clockFix(t: string, ctx: SlipContext): { text: string; hit: boolean } {
+  const c = ctx.cutClock;
+  if (!c || c.cuts.length === 0 || !CUT_TOPIC.test(t)) return { text: t, hit: false };
+  // 予備の話は予備の切れた時刻とだけ比べる（内蔵の切れた時刻に近いだけの数を通さない）
+  const spares = /予備|ボンベ/u.test(t) ? c.cuts.filter((x) => x.spare) : [];
+  const cuts = spares.length > 0 ? spares : c.cuts;
+  const pick = cuts.at(-1)!;
+  const ago = t.match(AGO_SAID);
+  if (ago) {
+    const said = (numOf(ago[1]) ?? 0) * 60 + (ago[2] ? 30 : 0);
+    if (cuts.some((x) => Math.abs(c.now - x.minute - said) <= Math.max(60, (c.now - x.minute) * 0.25))) return { text: t, hit: false };
+    return { text: t.replace(ago[0], `${minuteText(c.now - pick.minute)}前`), hit: true };
+  }
+  const m = t.match(CLOCK_SAID);
+  const said = m ? numOf(m[1]) : null;
+  if (!m || said === null) return { text: t, hit: false };
+  const fits = cuts.some((x) => {
+    const k = clockOfMinute(x.minute, c.startHour);
+    return dial(said, k.hour + k.min / 60) <= 1;
+  });
+  if (fits) return { text: t, hit: false };
+  return { text: t.replace(m[0], `${clockOfMinute(pick.minute, c.startHour).hour} 時`), hit: true };
+}
+
 /**
  * 1 文を帳面に合わせて直す（T141。落とさずに直せる物だけ）。前の連絡より前に切れた電池の「切れました」は「切れたままです」、
  * 電池の残りの数はコードの数（say）。直した決まりを返す。battery は前の文から続く電池の話か
@@ -1295,6 +1374,11 @@ export function sentenceFix(s: string, ctx: SlipContext, battery = false): { tex
   if (ctx.suppliedOnly && (GRID_BACK.test(t) || /(?<!届いた)電気で動/u.test(t))) {
     t = t.replace(GRID_BACK, "届いた電源で動いています").replace(/(?<!届いた)電気で動/u, "届いた電源で動");
     rules.push("power_said");
+  }
+  const clock = clockFix(t, ctx);
+  if (clock.hit) {
+    t = clock.text;
+    rules.push("clock_said");
   }
   const topic = (BATTERY_TOPIC.test(t) || battery) && !OTHER_TOPIC.test(t);
   const r = remainFix(t, ctx, topic);

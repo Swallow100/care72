@@ -249,6 +249,8 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-calm-while-down", bench: "drill", item: "count:drill:facts:calm_while_down", op: "<=", value: 0, since: "r10", task: "T174", label: "機器が止まったまま落ち着いた言い方をしない", suspects: ["lib/drill/person-facts.ts", "lib/drill/talk-quick.ts"] },
   { id: "drill-self-answer", bench: "drill", item: "count:drill:facts:self_answer", op: "<=", value: 0, since: "r10", task: "T174", label: "電話に出られない本人が電話で話さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/hooks.ts"] },
   { id: "drill-road-said", bench: "drill", item: "count:drill:facts:road_said", op: "<=", value: 0, since: "r10", task: "T174", label: "道の開通と本人役の言葉・訳が食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/engine.ts", "lib/drill/scenarios.ts"] },
+  // T177: 評価の 10 回目で機器の切れた時刻の言葉がずれた（経過の数をそのまま時刻に・計算違い）。帳面を時計の時刻で渡し、門が帳面の時刻に直すので画面の言葉では 0
+  { id: "drill-clock-said", bench: "drill", item: "count:drill:facts:clock_said", op: "<=", value: 0, since: "r11", task: "T177", label: "機器の切れた時刻の言葉が帳面の時計と食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts", "lib/drill/night.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];
 
