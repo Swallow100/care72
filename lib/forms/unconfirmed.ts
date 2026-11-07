@@ -52,8 +52,12 @@ export type UnconfirmedSummary = {
   hand?: UnconfirmedField[];
 };
 
-/** 帯と一覧に出す言葉（T117 で「対応なし」は「手書き」に。台帳に置き場の無い欄は紙に手で書く。docs/progress/t117.md の問い 4） */
-export const UNCONFIRMED_LABELS = { unconfirmed: "未確認", ask: "問い", blank: "未入力", noSource: "手書き" } as const;
+/**
+ * 帯と一覧に出す言葉（T117 で「対応なし」は「手書き」に。台帳に置き場の無い欄は紙に手で書く。docs/progress/t117.md の問い 4）。
+ * T188: 数えるのは紙の欄なので「未確認欄」（担当一覧・本人のページの「未確認 N」は台帳の pending の項目の数で、別の数。
+ * 1 つの項目が紙の 2 つ以上の欄に出ることも、pending の無い空の欄もある）。紙に手で書く欄は本人の 1 枚（T184 の 7）と同じ「要記入」
+ */
+export const UNCONFIRMED_LABELS = { unconfirmed: "未確認欄", ask: "問い", blank: "未入力", noSource: "要記入" } as const;
 
 /** 紙に「未確認」と刷る欄か（値の形で見る。lib/forms/mapped-sheet.ts の未確認の判定と同じ） */
 export function isUnconfirmedCell(cell: Cell): boolean {

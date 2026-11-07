@@ -1459,7 +1459,7 @@ export function buildMatsuyamaSheet(rows: PersonPageRows, opts: BuildOptions): M
     },
     // 様式の注は「地図上または箇条書き等で避難経路を記入」。経路地図（T102）を紙に置ける人は、文が無くても欄は埋まる（T106。未確認に数えない）
     "route.text": route ? value([t(route)]) : routeSceneOf(ledger, ROUTE_FRAME) ? { kind: "value", lines: [] } : unconfirmed(routeReason),
-    // 引用したかはケアマネが紙に手で印を付ける（T117 の棚卸しの C。未確認に数えず、帯の「手書き」に出す。lib/forms/unconfirmed.ts）
+    // 引用したかはケアマネが紙に手で印を付ける（T117 の棚卸しの C。未確認に数えず、帯の「要記入」に出す。lib/forms/unconfirmed.ts）
     "route.map": {
       kind: "choice",
       options: [
