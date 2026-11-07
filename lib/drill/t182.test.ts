@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { foldTick, initialState, timeOf, type DrillTurn } from "./engine.ts";
 import { createClockHooks } from "./hooks.ts";
-import { factsOf, placeOfState, planOf } from "./person-facts.ts";
+import { carryMoved, factsOf, placeOfState, placeReplyOf, planOf } from "./person-facts.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { clockOfMinute, clockWhen, dayLine, startHourOf } from "./night.ts";
 import { simTimeText } from "./time-text.ts";
@@ -84,5 +84,24 @@ describe("2. 計画の手段で移った人の機器の呼び出し", () => {
     const { moved: _m, ...stay } = st.people[ID]!;
     const still = (await hooks.marks!({ ...st, minute: CUT + 30, people: { ...st.people, [ID]: stay } } as never)).filter((m) => m.person === ID && m.kind === "down");
     expect(still.some((m) => m.at >= ARRIVE)).toBe(true);
+  });
+});
+
+describe("3. 赤の「家にいない」（どこか分からない）", () => {
+  it("移った記録にせず、いる所の問いに言い切らない", () => {
+    const ID = "p-10";
+    const turn = turnOf(ID, 2, { color: "red", source: "family", whereNow: null, saying: "家にいないようです。", atHome: false });
+    const st = foldTick(initialState("heavy_rain", [ID], "2026-11-05T01:00:00.000Z", { clock: true }), { step: 1, hour: 2, incidents: [], turns: [turn] }, 99);
+    expect(st.people[ID]?.moved).toBeUndefined();
+    const f = factsOf({ person: ID, world: EMPTY_WORLD, state: st.people[ID]!, actions: [], now: 300, plan: planOf(seedInput(ID)), inOutage: false });
+    expect(f.place?.loose).toBe(true);
+    expect(placeReplyOf(f)).toBeNull();
+  });
+
+  it("避難所と言った「家にいない」と、前からの記録は今まで通り", () => {
+    expect(carryMoved(null, { color: "red", whereNow: null, atHome: false, at: 2, saying: "避難所にいます。" })).toEqual({ to: "shelter", at: 120, by: "turn" });
+    const before = { to: "shelter" as const, at: 60, by: "plan" as const };
+    expect(carryMoved({ moved: before }, { color: "red", whereNow: null, atHome: false, at: 2, saying: "家にいないようです。" })).toEqual(before);
+    expect(carryMoved(null, { color: "green", whereNow: "other", at: 2 })).toEqual({ to: "other", at: 120, by: "turn" });
   });
 });

@@ -544,10 +544,16 @@ export function carryPlace(
  * 移った事の記録を連絡で重ねる（T177。engine の本人の様子と台の検査が同じに引く）。評価の 10 回目で 3 回とも、本人役の言葉だけで避難所や病院へ移り、次の連絡で家に戻った。
  * 門を通った安否（計画の手段の記録・想定の表の行・手が来たあとの連絡）だけを記録する。表の固定の安否が「家」でも記録は戻さない（移った人の表の行は門が直す。AI が失敗した時の固定の安否だけここに来る）
  */
-export function carryMoved(prev: Pick<PersonState, "moved"> | null, t: Pick<DrillTurn, "color" | "whereNow" | "at"> & { atHome?: boolean | null | undefined; move?: TurnMove | undefined; ai?: boolean | undefined }): TurnMove | null {
+export function carryMoved(
+  prev: Pick<PersonState, "moved"> | null,
+  t: Pick<DrillTurn, "color" | "whereNow" | "at"> & { atHome?: boolean | null | undefined; move?: TurnMove | undefined; ai?: boolean | undefined; saying?: string | null | undefined },
+): TurnMove | null {
   if (t.move) return t.move;
   const before = prev?.moved ?? null;
-  const place = placeOfState({ color: t.color, whereNow: t.whereNow, atHome: t.atHome ?? null });
+  // 赤の「家にいない」で、言葉が避難所と言わない物（どこか分からない）は移った記録にしない（T182。前は「その他へ移った」になり、いる所の問いにコードが「避難先にいます」と言い切った）
+  const loose = t.color === "red" && t.atHome === false && !(t.saying && placeSaid(t.saying) === "shelter");
+  if (loose) return before;
+  const place = t.color === "red" && t.atHome === false ? "shelter" : placeOfState({ color: t.color, whereNow: t.whereNow, atHome: t.atHome ?? null });
   const minute = Math.round(t.at * 60);
   if (place === "shelter" || place === "other") return before && before.to !== "home" ? before : { to: place, at: minute, by: "turn" };
   if (place === "home" && before && before.to !== "home" && before.at <= minute && t.ai === true) return { to: "home", at: minute, by: "turn" };
