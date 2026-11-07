@@ -114,7 +114,7 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
               const ids = g.requests.map((r) => r.id);
               const on = ids.filter((id) => picked.has(id)).length;
               return (
-                <tbody key={g.office} data-request-office={g.office}>
+                <tbody key={g.officeId} data-request-office={g.office} data-request-office-id={g.officeId}>
                   {/* 事業所の行: その事業所の全員を選ぶ欄（見える字つき。全員を選ぶと全解除）と名前と人数 */}
                   <tr>
                     <th scope="colgroup" colSpan={6} className={`${TH} whitespace-normal`}>

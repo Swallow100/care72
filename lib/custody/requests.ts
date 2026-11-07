@@ -29,6 +29,8 @@ export type RequestHit = {
   personId: string;
   kana: string;
   age: number | null;
+  /** 依頼元の事業所の id（一括受入のまとめの鍵。同じ名前の別の事業所を 1 つにしない、T184） */
+  officeId: string;
   /** 依頼元の事業所の名前 */
   office: string;
   /** 行き先（受け入れたときの避難所） */
@@ -126,14 +128,24 @@ export async function withdrawRequest(
   return { ok: true, personId: row.person_id, custodyId: null };
 }
 
-type HitRow = { id: string; person_id: string; kana: string; birth_date: string | null; reported_age: number | null; office: string; shelter: string; requested_at: string };
+type HitRow = {
+  id: string;
+  person_id: string;
+  kana: string;
+  birth_date: string | null;
+  reported_age: number | null;
+  office_id: string;
+  office: string;
+  shelter: string;
+  requested_at: string;
+};
 
 /** 医療班に出す依頼中の一覧（古い順）。行政・ほかの役は空。審査員はデモの人の依頼だけ */
 export async function openRequests(db: D1Database, actor: StaffActor, today: string): Promise<RequestHit[]> {
   if (!seesRequests(actor)) return [];
   const res = await db
     .prepare(
-      `SELECT r.id, r.person_id, p.kana, p.birth_date, p.reported_age, o.name AS office, r.shelter, r.requested_at
+      `SELECT r.id, r.person_id, p.kana, p.birth_date, p.reported_age, r.office_id, o.name AS office, r.shelter, r.requested_at
          FROM custody_requests r JOIN people p ON p.id = r.person_id JOIN offices o ON o.id = r.office_id
         WHERE r.state = 'open'${wallOf(actor)}
         ORDER BY r.requested_at, r.id`,
@@ -144,6 +156,7 @@ export async function openRequests(db: D1Database, actor: StaffActor, today: str
     personId: r.person_id,
     kana: r.kana,
     age: (r.birth_date ? ageOn(r.birth_date, today) : r.reported_age) ?? null,
+    officeId: r.office_id,
     office: r.office,
     shelter: r.shelter,
     requestedAt: r.requested_at,

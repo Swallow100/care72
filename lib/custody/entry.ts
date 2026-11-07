@@ -45,13 +45,13 @@ const RECEIVED_MAX = 50;
 
 /**
  * URL の ?received=（Next の searchParams の形）。受け持ちの id をコンマでつないだ物（一括受入、T172）。
- * 同じ鍵が 2 つ以上・形の違う物が混ざった時は無かったことに
+ * 同じ鍵が 2 つ以上・形の違う物が混ざった時は無かったことに。同じ id の重なりは 1 つに（T184。?received=a,a で行が 2 回出ない）
  */
 export function parseReceived(q: { [RECEIVED_PARAM]?: unknown }): string[] {
   const v = q[RECEIVED_PARAM];
   if (typeof v !== "string" || v === "") return [];
   const ids = v.split(",");
-  return ids.length <= RECEIVED_MAX && ids.every((id) => CUSTODY_ID.test(id)) ? ids : [];
+  return ids.length <= RECEIVED_MAX && ids.every((id) => CUSTODY_ID.test(id)) ? [...new Set(ids)] : [];
 }
 
 /**

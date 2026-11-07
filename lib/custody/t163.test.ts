@@ -135,7 +135,7 @@ describe("T163 医療班の一覧と返事", () => {
     const med = staffActor(plainStaff("medical"))!;
     const list = await openRequests(db, med, TODAY);
     expect(list).toHaveLength(1);
-    expect(Object.keys(list[0]!).sort()).toEqual(["age", "id", "kana", "office", "personId", "requestedAt", "shelter"]);
+    expect(Object.keys(list[0]!).sort()).toEqual(["age", "id", "kana", "office", "officeId", "personId", "requestedAt", "shelter"]);
     expect(list[0]).toMatchObject({ kana: "ヤマダ ハナ", shelter: SHELTER, office: "デモ事業所" });
     expect(JSON.stringify(list)).not.toMatch(/山田|酸素|ワーファリン|090-/);
     expect(await openRequests(db, staffActor(plainStaff("government"))!, TODAY)).toEqual([]);
