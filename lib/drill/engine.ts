@@ -519,6 +519,16 @@ export function timeOf(s: Pick<DrillState, "options" | "startedAt">): { night?: 
   return h === null ? {} : { startHour: h };
 }
 
+/**
+ * 家の浸水の深さ（m。T182）。開始の時に台帳から写した家の洪水の区域の深さの最大（planOf の floodM と同じ）。区域が無ければ null、家を写していなければ undefined（分からない）
+ */
+export function floodDepthOf(homes: DrillState["homes"], person: string): number | null | undefined {
+  const home = homes?.[person];
+  if (!home) return undefined;
+  const floods = home.zones.filter((z) => z.kind === "flood");
+  return floods.length > 0 ? Math.max(...floods.map((z) => z.depthM ?? 0)) : null;
+}
+
 export class DrillEnded extends Error {
   constructor() {
     super("訓練は終わっている");
@@ -1110,7 +1120,9 @@ export async function advance(
     if (roadsMoved.size > 0) {
       turns.forEach((t, i) => {
         if (!t.ai || !roadsMoved.has(t.person)) return;
-        turns[i] = { ...t, saying: dropRoadSlips(t.saying, world, t.person, hooks.gates?.hit), doing: dropRoadSlips(t.doing, world, t.person) };
+        // 家の浸水の深さ（T182。台帳から写した家の区域。川の氾濫の区域の人の「冠水で通れない」を落とさない）
+        const floodM = floodDepthOf(state.homes, t.person);
+        turns[i] = { ...t, saying: dropRoadSlips(t.saying, world, t.person, hooks.gates?.hit, floodM), doing: dropRoadSlips(t.doing, world, t.person, undefined, floodM) };
       });
     }
   }

@@ -599,7 +599,7 @@ export function helpsBetween(world: WorldState, actions: ReadonlyArray<ActionRec
  * 家の辺りが通れないか（T139・T141）。この人の家の近くの道か全体の道の通行止、家の辺りの浸水（仮想の印）、
  * 川の氾濫の間で家が浸水の区域（台帳の浸水の深さが FLOOD_AREA_M 以上）。計画の手段があっても移れない
  */
-export function placeBlocked(world: WorldState, person: string, plan: Plan | null): boolean {
+export function placeBlocked(world: WorldState, person: string, plan: Pick<Plan, "floodM"> | null): boolean {
   const roads = (world.roads ?? []).some((r) => (!r.person || r.person === person) && !r.open);
   const flooded = world.marks?.[person]?.flooded !== undefined || (world.flood === true && (plan?.floodM ?? 0) >= FLOOD_AREA_M);
   return roads || flooded;
@@ -1211,11 +1211,14 @@ export function roadSlip(t: string, ctx: Pick<SlipContext, "roadClosed" | "dryRo
 
 /**
  * 遅れて当たった監督の道の出来事に、同じ区切りの本人役の言葉を合わせる（T174。評価の 9 回目で、本人役が「道が通れない」と言った同じ分に、並べて呼んだ監督の
- * 開通が当たった）。合わない文だけ落とす。色と 4 問は変えない。plan が無いので閉じているかは道と印だけで見る
+ * 開通が当たった）。合わない文だけ落とす。色と 4 問は変えない。閉じているかは道と印と、家の浸水の深さ（floodM。台帳の洪水の区域の深さ、無ければ null）で見る。
+ * T182: 前は深さを見ず、川の氾濫の区域の人の正しい「冠水で通れない」を落とした。深さが分からない（undefined）まま川の氾濫の間は、閉じているかを決めず落とさない
  */
-export function dropRoadSlips(text: string | null, world: WorldState, person: string, onDrop?: (rule: GateRule) => void): string | null {
+export function dropRoadSlips(text: string | null, world: WorldState, person: string, onDrop?: (rule: GateRule) => void, floodM?: number | null): string | null {
   if (!text) return text;
-  const roadClosed = placeBlocked(world, person, null);
+  const unknownFlood = floodM === undefined && world.flood === true;
+  const shut = placeBlocked(world, person, floodM === undefined ? null : { floodM });
+  const roadClosed = unknownFlood && !shut ? undefined : shut;
   const kept = text.split(/(?<=[。！？!?])/u).filter((s) => {
     if (!roadSlip(s.normalize("NFKC"), { roadClosed })) return true;
     onDrop?.("road_said");

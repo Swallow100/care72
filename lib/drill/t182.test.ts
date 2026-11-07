@@ -2,9 +2,10 @@
 
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
-import { foldTick, initialState, timeOf, type DrillTurn } from "./engine.ts";
+import { floodDepthOf, foldTick, initialState, timeOf, type DrillTurn } from "./engine.ts";
+import { homeOf } from "./comms.ts";
 import { createClockHooks } from "./hooks.ts";
-import { carryMoved, factsOf, placeOfState, placeReplyOf, planOf } from "./person-facts.ts";
+import { carryMoved, dropRoadSlips, factsOf, placeOfState, placeReplyOf, planOf } from "./person-facts.ts";
 import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { clockOfMinute, clockWhen, dayLine, startHourOf } from "./night.ts";
 import { simTimeText } from "./time-text.ts";
@@ -103,5 +104,29 @@ describe("3. 赤の「家にいない」（どこか分からない）", () => {
     const before = { to: "shelter" as const, at: 60, by: "plan" as const };
     expect(carryMoved({ moved: before }, { color: "red", whereNow: null, atHome: false, at: 2, saying: "家にいないようです。" })).toEqual(before);
     expect(carryMoved(null, { color: "green", whereNow: "other", at: 2 })).toEqual({ to: "other", at: 120, by: "turn" });
+  });
+});
+
+describe("4. 遅れて当たった道の出来事の門と浸水の区域", () => {
+  const ID = "p-01";
+  const world: WorldState = { ...EMPTY_WORLD, flood: true, roads: [{ id: `rd-x-${ID}`, label: "家の前の道", open: true, person: ID }] } as WorldState;
+
+  it("川の氾濫の区域の人の「冠水で通れない」を落とさない（帳面と同じ深さで見る）", () => {
+    const plan = planOf(seedInput(ID));
+    expect(plan.floodM ?? 0).toBeGreaterThanOrEqual(3);
+    expect(factsOf({ person: ID, world, state: null, actions: [], now: 600, plan, inOutage: false }).blocked).toBe(true);
+    const floodM = floodDepthOf({ [ID]: homeOf(seedInput(ID).ledger) }, ID);
+    expect(floodM).toBe(plan.floodM);
+    const said = "家の前の道が冠水して通れません。待っています。";
+    expect(dropRoadSlips(said, world, ID, undefined, floodM)).toBe(said);
+    // 深さが分からない（家を写していない）まま川の氾濫の間は、閉じているかを決めず落とさない
+    expect(dropRoadSlips(said, world, ID)).toBe(said);
+    // 浸水の区域でない人は前と同じに落とす
+    expect(dropRoadSlips(said, world, ID, undefined, null)).toBe("待っています。");
+  });
+
+  it("家を写していない訓練の深さは分からない、区域の無い家は null", () => {
+    expect(floodDepthOf(undefined, ID)).toBeUndefined();
+    expect(floodDepthOf({ [ID]: { zones: [], town: null, landline: true, mobile: false } }, ID)).toBeNull();
   });
 });
