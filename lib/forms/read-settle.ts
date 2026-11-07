@@ -111,23 +111,45 @@ function keepWidest(fields: readonly MappingField[]): MappingField[] {
   const items = new Set([...extra.keys()].map((id) => fields.find((f) => f.id === id)!.item!));
   for (const item of items) {
     const same = fields.filter((f) => f.item === item && !f.removed && !bracketOwner(f, fields));
-    // 組は、余った欄と、それより前で同じ所にならない最初の値の欄（□ が先にあると extra の first は □）
-    const ids = new Set<string>(
-      [...extra.keys()]
-        .map((id) => same.find((f) => f.id === id))
-        .filter((f): f is MappingField => !!f)
-        .flatMap((f) => [f.id, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1).map((g) => g.id)]),
-    );
-    const group = same.filter((f) => ids.has(f.id) && carriesValue(f));
-    if (group.length < 2) continue;
-    const shaped = group.find((f) => !isText(f));
-    const wide = group.reduce((a, b) => (area(b.box) > area(a.box) ? b : a));
-    // 項目の名前の言葉を持つ欄が狭すぎなければそちら（「特記事項」と「助けてほしいこと」に「その他の特記」）
-    const named = group.find((f) => namesItem(f, item) && area(f.box) * 10 >= area(wide.box));
-    const keep = named ?? shaped ?? wide;
-    for (const f of group) if (f !== keep && isText(f)) drop.add(f.id);
+    // 組は、余った欄と、それより前で同じ所にならない最初の値の欄（□ が先にあると extra の first は □）。
+    // 組は同じ頁の中だけ（T181。頁の頭の「氏名」「利用者名」・「作成日」「記入日」は頁ごとに名前と場所が違い、2 頁目の欄が空いた）。
+    // 頁をまたぐのは、日付・電話の形の欄の項目を、別の頁のその形の言葉の無い字の欄に当てた読み（生年月日と識別番号。T176）だけ
+    const pairs = [...extra.keys()]
+      .map((id) => same.find((f) => f.id === id))
+      .filter((f): f is MappingField => !!f)
+      .map((f) => [f, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && (g.page === f.page || strayAcross(g, f)) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1)]);
+    for (const group of joined(pairs).map((ids) => same.filter((f) => ids.has(f.id) && carriesValue(f)))) {
+      if (group.length < 2) continue;
+      const shaped = group.find((f) => !isText(f));
+      const wide = group.reduce((a, b) => (area(b.box) > area(a.box) ? b : a));
+      // 項目の名前の言葉を持つ欄が狭すぎなければそちら（「特記事項」と「助けてほしいこと」に「その他の特記」）
+      const named = group.find((f) => namesItem(f, item) && area(f.box) * 10 >= area(wide.box));
+      const keep = named ?? shaped ?? wide;
+      for (const f of group) if (f !== keep && isText(f)) drop.add(f.id);
+    }
   }
   return fields.map((f) => (drop.has(f.id) ? freed(f, "同じ項目の欄") : f));
+}
+
+const DATE_WORD = /日|年月|生年/;
+const PHONE_WORD = /電話|TEL|携帯|連絡/i;
+/** 別の頁の、日付・電話の形の欄 g の項目を当てた、その形の言葉の無い字の欄 f（頁をまたいで組にしてよい読み違い） */
+function strayAcross(g: MappingField, f: MappingField): boolean {
+  if (!isText(f) || (g.shape !== "date" && g.shape !== "phone")) return false;
+  return !(g.shape === "date" ? DATE_WORD : PHONE_WORD).test(nfkc(f.label));
+}
+
+/** 組の並びを、欄を共にする組どうしでつなぐ（欄の id の集まり） */
+function joined(pairs: ReadonlyArray<readonly MappingField[]>): Array<Set<string>> {
+  const out: Array<Set<string>> = [];
+  for (const p of pairs) {
+    const ids = new Set(p.map((f) => f.id));
+    const hit = out.filter((s) => [...ids].some((id) => s.has(id)));
+    const merged = new Set([...ids, ...hit.flatMap((s) => [...s])]);
+    for (const s of hit) out.splice(out.indexOf(s), 1);
+    out.push(merged);
+  }
+  return out;
 }
 
 const nfkc = (s: string) => s.normalize("NFKC");

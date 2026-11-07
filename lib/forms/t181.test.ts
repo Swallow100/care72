@@ -78,6 +78,30 @@ describe("T181 1 □ と同じ行の空きの欄を、ほかに値を書く欄�
   });
 });
 
+describe("T181 3 同じ項目の字の欄の組は同じ頁の中だけ", () => {
+  const text = (o: Partial<ReadField> & Pick<ReadField, "label" | "item" | "box" | "page">) => fld({ section: "", shape: "text", ...o });
+
+  it("頁の頭の氏名が頁ごとに名前と場所が違っても、2 頁目の欄は外さない", () => {
+    const m = read([text({ page: 1, section: "本人", label: "氏名", item: "person.name", box: box(0.2, 0.15, 0.3, 0.02) }), text({ page: 2, label: "利用者名", item: "person.name", box: box(0.6, 0.04, 0.2, 0.015) })], 2);
+    expect(m.fields.map((f) => [f.page, f.item])).toEqual([
+      [1, "person.name"],
+      [2, "person.name"],
+    ]);
+  });
+
+  it("1 頁の作成日（日付の形）と 2 頁の記入日（字の欄）も両方残す", () => {
+    const m = read([fld({ page: 1, section: "", label: "作成日", shape: "date", item: "plan.date", box: box(0.7, 0.05, 0.2, 0.015) }), text({ page: 2, label: "記入日", item: "plan.date", box: box(0.1, 0.9, 0.2, 0.015) })], 2);
+    expect(m.fields.map((f) => f.item)).toEqual(["plan.date", "plan.date"]);
+  });
+
+  it("同じ頁の 2 つ目は今までどおり外す。日付の欄の項目を別の頁の日付でない字の欄に当てた読みも外す（T176）", () => {
+    const m = read([text({ page: 1, label: "必ず持ち出す物", item: "evacuation.carryItems", box: box(0.5, 0.1, 0.4, 0.2) }), text({ page: 1, label: "持ち出し品", item: "evacuation.carryItems", box: box(0.5, 0.5, 0.05, 0.02) })]);
+    expect(m.fields.map((f) => f.item)).toEqual(["evacuation.carryItems", null]);
+    const n = read([fld({ page: 1, section: "", label: "生年月日", shape: "date", item: "person.birth", box: box(0.3, 0.2, 0.4, 0.014) }), text({ page: 2, label: "識別番号", item: "person.birth", box: box(0.3, 0.9, 0.6, 0.014) })], 2);
+    expect(n.fields.map((f) => f.item)).toEqual(["person.birth", null]);
+  });
+});
+
 describe("T181 2 「□なし □あり（　）」の括弧の中に値を書く", () => {
   const no = fld({ label: "なし", shape: "check", item: allergies, box: box(0.3, 0.3, 0.012, 0.01) });
   const yes = fld({ label: "あり", shape: "check", item: allergies, box: box(0.4, 0.3, 0.012, 0.01) });
