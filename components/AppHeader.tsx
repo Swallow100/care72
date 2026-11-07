@@ -15,7 +15,18 @@ import { disasterMark, type DisasterMark } from "@/lib/disaster/state";
 import type { Principal } from "@/lib/auth/principal";
 import { currentChoice, roleChoicesFor } from "@/lib/auth/choices";
 import { initialPasswordHref } from "@/lib/auth/password-change";
-import { ADMIN_LABEL, canViewPage, homePath, JUDGE_LABEL, LOGIN_PATH, ROLE_LABELS, ROLE_SELECT_PATH, showsLogout, showsPcHint } from "@/lib/auth/roles";
+import {
+  ADMIN_LABEL,
+  canViewPage,
+  homePath,
+  JUDGE_LABEL,
+  LOGIN_PATH,
+  medicalChoiceOf,
+  ROLE_LABELS,
+  ROLE_SELECT_PATH,
+  showsLogout,
+  showsPcHint,
+} from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { SessionSecretMissing } from "@/lib/auth/session";
 import { canChooseRole } from "@/lib/auth/wall";
@@ -63,7 +74,8 @@ export async function AppHeader() {
             ケア72
             <LinkPending />
           </Link>
-          {desk && <NavLinks>{p && canChooseRole(p) && <StaffEntry label={ROLE_LABELS.medical} name={REQUEST_LABELS.toStaffName} />}</NavLinks>}
+          {/* 新規事業所の中（T180）では新規事業所の医療班へ（デモの医療班に新規事業所の依頼は届かない） */}
+          {desk && <NavLinks>{p && canChooseRole(p) && <StaffEntry label={ROLE_LABELS.medical} name={REQUEST_LABELS.toStaffName} value={medicalChoiceOf(p)} />}</NavLinks>}
           {/* 訓練の画面では事業所の状態の代わりに訓練の想定・規模・経過（T125、components/HeaderMarkSlot） */}
           {desk && <HeaderMarkSlot>{mark && <DisasterBadge mark={mark} link warnings={warnings} />}</HeaderMarkSlot>}
         </div>

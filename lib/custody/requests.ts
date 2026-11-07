@@ -16,7 +16,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { JUDGE_LABEL } from "../auth/roles.ts";
-import { demoPersonSql } from "../auth/wall.ts";
+import { staffWallSql } from "../auth/wall.ts";
 import type { CustodyRequestState } from "../db/types.ts";
 import type { OfficeActor } from "../office/scope.ts";
 import type { StaffActor } from "./actor.ts";
@@ -55,7 +55,7 @@ export function seesRequests(actor: Pick<StaffActor, "role">): boolean {
 }
 
 function wallOf(actor: Pick<StaffActor, "walled" | "wallOffice">, alias = "p"): string {
-  return actor.walled ? ` AND ${demoPersonSql(alias, actor.wallOffice ?? DEMO_OFFICE_ID)}` : "";
+  return staffWallSql(actor, alias, DEMO_OFFICE_ID);
 }
 
 const MEDICAL_GRANTED = (alias: string) =>

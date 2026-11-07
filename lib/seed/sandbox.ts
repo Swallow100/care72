@@ -4,6 +4,7 @@
 //
 // 消す範囲（SANDBOX_CLEAR。手元の npm run db:reset の CLEAR_ORDER と同じ表を全部並べ、テストが抜けを見る）:
 // - 試用事業所の人と、その人に付いた行（連絡先・同意・時計・信号・経過・受け持ち・第三者提供・様式 9 の手直し）
+// - 新規事業所の医療班の役（T180）がその場で登録した所属なしの人（先に試用事業所へ移す。SANDBOX_ADOPT_UNAFFILIATED）
 // - 試用事業所の訓練・事業所の経過・災害モード・様式の対応表・アンケートのリンクと答え・アカウント、事業所の行
 // - ai_calls: 試用事業所の呼び出しはデモ事業所の数え（lib/claude/usage.ts の quotaOffice）で入るので、試用事業所の id の行は無いはず。
 //   外部キー（ai_calls.office_id → offices）で事業所が消せなくならないよう、あれば消す
@@ -14,6 +15,8 @@
 
 import type { D1Database } from "@cloudflare/workers-types";
 import { CLEAR_ORDER } from "../../seed/sql.ts";
+import { UNAFFILIATED_OFFICE_ID } from "../auth/demo.ts";
+import { sandboxRegisteredSql } from "../auth/wall.ts";
 import { pageImagePrefix } from "../forms/page-images.ts";
 import { SANDBOX_OFFICES } from "../office/sandbox.ts";
 import { isSandboxOfficeId } from "../office/sandbox-id.ts";
@@ -22,6 +25,8 @@ import { clearPrefix, type SeedBucket } from "./reset.ts";
 type Table = (typeof CLEAR_ORDER)[number];
 
 const SB = SANDBOX_OFFICES;
+/** SQL の文字（id の決まった値。入力は入らない） */
+const lit = (s: string) => `'${s}'`;
 const PEOPLE = `SELECT id FROM people WHERE office_id IN (${SB})`;
 const DRILLS = `SELECT id FROM drills WHERE office_id IN (${SB})`;
 
@@ -67,12 +72,25 @@ export const SANDBOX_CLEAR: Readonly<Record<Table, string | null>> = {
   offices: `judge_sandbox = 1`,
 };
 
-/** 試用事業所を消す文（R2 のほか）。1 つの batch で流す */
+/**
+ * 所属なしの人のうち、試用事業所のアカウント（新規事業所の医療班の役、T180）がその場で登録した人を、その試用事業所へ移す（このあと一緒に消える）。
+ * デモの戻しの adoptUnaffiliated（lib/seed/reset.ts）と同じ形。受け持ちを消すと登録した事業所が分からなくなるので、消す前に流す
+ */
+export const SANDBOX_ADOPT_UNAFFILIATED = `UPDATE people SET office_id = (
+    SELECT wall_a.office_id FROM custody wall_c JOIN accounts wall_a ON wall_a.id = wall_c.holder_id JOIN offices wall_o ON wall_o.id = wall_a.office_id
+     WHERE wall_c.person_id = people.id AND wall_c.via = 'on_site' AND wall_o.judge_sandbox = 1
+     ORDER BY wall_c.received_at, wall_c.id LIMIT 1)
+ WHERE office_id = ${lit(UNAFFILIATED_OFFICE_ID)} AND ${sandboxRegisteredSql("people")};`;
+
+/** 試用事業所を消す文（R2 のほか）。1 つの batch で流す。先に所属なしの登録を試用事業所へ移す（T180） */
 export function sandboxClearStatements(): string[] {
-  return CLEAR_ORDER.flatMap((t) => {
-    const where = SANDBOX_CLEAR[t];
-    return where === null ? [] : [`DELETE FROM ${t} WHERE ${where};`];
-  });
+  return [
+    SANDBOX_ADOPT_UNAFFILIATED,
+    ...CLEAR_ORDER.flatMap((t) => {
+      const where = SANDBOX_CLEAR[t];
+      return where === null ? [] : [`DELETE FROM ${t} WHERE ${where};`];
+    }),
+  ];
 }
 
 /** 消す試用事業所と、その訓練の id（R2 の頭を作るため） */

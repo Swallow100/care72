@@ -22,11 +22,14 @@ export function isWalled(p: { judge: boolean; judgeMade?: boolean; switched?: bo
 }
 
 /**
- * 壁の中の人が見る種の事業所（T144）。自分の事業所が種の事業所ならそこ（審査員はデモ事業所、役を替えた山本は確認用の事業所）、
- * そうでなければデモ事業所（審査員の試用事業所 T115 と、そこで足したアカウント。前と同じ）
+ * 壁の中の人が見る事業所（T144）。自分の事業所が種の事業所ならそこ（審査員はデモ事業所、役を替えた山本は確認用の事業所）。
+ * 審査員の新規事業所の中の役（T180。principal の sandbox が付く。医療班・本人・家族・ケアマネのどれも）はその試用事業所: 医療班が探す・受け入れる・
+ * 依頼を受ける人は試用事業所の人と、試用事業所のアカウントがその場で登録した人だけ（デモの人は出さない。デモの医療班にも試用事業所の人は出ない）。
+ * そうでなければデモ事業所（試用事業所で足したアカウントが自分のパスワードで入ったとき。前と同じ）
  */
-export function wallOfficeOf(p: { office: { id: string } | null } | null | undefined): string {
+export function wallOfficeOf(p: { office: { id: string } | null; sandbox?: boolean } | null | undefined): string {
   const id = p?.office?.id;
+  if (id && p?.sandbox === true) return id;
   return id && isSeedOfficeId(id) ? id : DEMO_OFFICE_ID;
 }
 
@@ -54,6 +57,28 @@ export function demoRegisteredSql(alias: string, officeIds: string | readonly st
   const ids = (typeof officeIds === "string" ? [officeIds] : officeIds).map(q).join(", ");
   return `EXISTS (SELECT 1 FROM custody wall_c JOIN accounts wall_a ON wall_a.id = wall_c.holder_id
     WHERE wall_c.person_id = ${alias}.id AND wall_c.via = 'on_site' AND wall_a.office_id IN (${ids}))`;
+}
+
+/**
+ * SQL の条件: 本人（alias の表の行）が審査員の試用事業所（T115）のどれかのアカウントにその場で登録された（T180。新規事業所の医療班の役）。
+ * 本物の事業所の所属なしの引受に出さない・毎朝 4 時の掃除で試用事業所へ移して消すため
+ */
+export function sandboxRegisteredSql(alias: string): string {
+  return `EXISTS (SELECT 1 FROM custody wall_c JOIN accounts wall_a ON wall_a.id = wall_c.holder_id JOIN offices wall_o ON wall_o.id = wall_a.office_id
+    WHERE wall_c.person_id = ${alias}.id AND wall_c.via = 'on_site' AND wall_o.judge_sandbox = 1)`;
+}
+
+/**
+ * SQL の条件: 本人（alias の表の行）が審査員の試用事業所の人でも、試用事業所のアカウントがその場で登録した人でもない。
+ * 壁の外の医療班・行政（本物）の受入一覧・検索・避難所・受入に、審査員が作った人と依頼を混ぜない（11/7 の見直し）
+ */
+export function notSandboxPersonSql(alias: string): string {
+  return `(${alias}.office_id NOT IN (SELECT id FROM offices WHERE judge_sandbox = 1) AND NOT ${sandboxRegisteredSql(alias)})`;
+}
+
+/** 医療班・行政の役の人の条件（先頭に AND）。壁の中はその種の事業所のデモの人、壁の外は試用事業所の人を除く */
+export function staffWallSql(actor: { walled?: boolean; wallOffice?: string }, alias = "p", demoOffice: string): string {
+  return actor.walled ? ` AND ${demoPersonSql(alias, actor.wallOffice ?? demoOffice)}` : ` AND ${notSandboxPersonSql(alias)}`;
 }
 
 /**

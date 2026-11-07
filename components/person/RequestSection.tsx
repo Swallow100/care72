@@ -35,7 +35,20 @@ async function post(url: string, body: unknown): Promise<Json> {
 const INPUT =
   "w-full min-w-0 rounded-md bg-panel2 px-2 py-1 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
 
-export function RequestSection({ personId, panel, level, staffEntry = false }: { personId: string; panel: RequestPanel; level: 1 | 2; staffEntry?: boolean }) {
+export function RequestSection({
+  personId,
+  panel,
+  level,
+  staffEntry = false,
+  staffRole = "medical",
+}: {
+  personId: string;
+  panel: RequestPanel;
+  level: 1 | 2;
+  staffEntry?: boolean;
+  /** 受入一覧への入口の役の値（新規事業所の中では新規事業所の医療班、T180。lib/auth/roles.ts の medicalChoiceOf） */
+  staffRole?: string;
+}) {
   const router = useRouter();
   const H = level === 1 ? "h2" : "h3";
   const titleId = `person-${personId}-request`;
@@ -86,7 +99,7 @@ export function RequestSection({ personId, panel, level, staffEntry = false }: {
         {!panel.canSend && !open && <Mark>{REQUEST_LABELS.noConsent}</Mark>}
         {open && staffEntry && (
           <form method="post" action="/api/auth/role" className="ml-auto" data-request-staff>
-            <SubmitButton kind="main" size="sm" icon={RoleIcon} name="role" value="medical" aria-label={REQUEST_LABELS.toStaffName} title={REQUEST_LABELS.toStaffName}>
+            <SubmitButton kind="main" size="sm" icon={RoleIcon} name="role" value={staffRole} aria-label={REQUEST_LABELS.toStaffName} title={REQUEST_LABELS.toStaffName}>
               {REQUEST_LABELS.toStaff}
             </SubmitButton>
           </form>
