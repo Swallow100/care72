@@ -3,7 +3,7 @@
 // 中身の写し（欄の値・見直しの所の名前と訳）は入れない。数と様式の id・入れ方の名前だけ。
 
 import { causeCounts, findingId, writeFindings, type Accept, type Finding, type Severity } from "../findings.ts";
-import { guardFindings } from "../guards.ts";
+import { guardFindings, unjudgedGuards } from "../guards.ts";
 import { sharedMissOf, valuesOf } from "../scorecard-items.ts";
 import type { RunResult } from "./run.ts";
 
@@ -133,7 +133,7 @@ export function formsFindings(r: FormsResultForFindings): Finding[] {
 }
 
 /** 回の findings.json を書く（指摘と、守り〔tools/eval/guards.ts〕の外れ）。root は回の置き場（初めて出た回を前の回から引き継ぐ） */
-export function writeFormsFindings(r: FormsResultForFindings & { dir: string }, root: string): { path: string; findings: number; guarded: number } {
+export function writeFormsFindings(r: FormsResultForFindings & { dir: string }, root: string): { path: string; findings: number; guarded: number; unjudged: number } {
   const found = formsFindings(r);
   const client = r.mode;
   const guarded = guardFindings({
@@ -141,8 +141,9 @@ export function writeFormsFindings(r: FormsResultForFindings & { dir: string }, 
     run: r.run,
     values: valuesOf({ bench: "forms", run: r.run, client, data: r }),
     counts: causeCounts(found),
+    client,
     repro: [r.mode === "real" ? "node --env-file=<鍵のファイル> tools/eval/forms/cli.ts --real" : "npm run eval:forms"],
   });
   const path = writeFindings(r.dir, { bench: "forms", run: r.run, client, findings: [...found, ...guarded] }, { root });
-  return { path, findings: found.length + guarded.length, guarded: guarded.length };
+  return { path, findings: found.length + guarded.length, guarded: guarded.length, unjudged: unjudgedGuards("forms", client).length };
 }

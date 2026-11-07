@@ -19,7 +19,7 @@
 import dns from "node:dns";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { reviewDrift, type DriftPaper } from "./drift.ts";
+import { driftOf, type DriftPaper } from "./drift.ts";
 import { diffMarkdown, oneLine, writeIndex } from "./report.ts";
 import { writeFormsFindings } from "./findings.ts";
 import { previousRun, REPO_ROOT, runEval, type PaperMode } from "./run.ts";
@@ -102,8 +102,9 @@ const result = await runEval({
 // 読み取りの揺れ（T175）: 比べる回は同じコードで数え直した物（--replay）にする。古いコードの回と比べるとコードの差が混ざる
 const driftFrom = value("drift-from");
 if (driftFrom) {
-  const other = JSON.parse(readFileSync(join(driftFrom, "result.json"), "utf8")) as { papers: DriftPaper[] };
-  result.drift = { from: driftFrom, ...reviewDrift(other.papers, result.papers) };
+  const other = JSON.parse(readFileSync(join(driftFrom, "result.json"), "utf8")) as { mode?: string; papers: DriftPaper[] };
+  result.drift = driftOf(driftFrom, other, result.papers);
+  if (!result.drift.sameCode) process.stderr.write("比べる元が数え直しの回でない: 差にコードの差が混ざるので、点数の表と守りの数に入れない\n");
   writeFileSync(join(result.dir, "result.json"), JSON.stringify(result, null, 2), "utf8");
 }
 const prev = previousRun(outRoot, result);
@@ -113,5 +114,5 @@ if (!flag("no-progress")) writeFileSync(join(REPO_ROOT, "docs", "progress", `eva
 const index = writeIndex(result);
 // 指摘（T157）: 共通の形の findings.json を回のフォルダに（数と様式の id だけ。tools/eval/findings.ts）
 const found = writeFormsFindings(result, outRoot);
-process.stderr.write(`回のフォルダ ${result.dir}\n一覧 ${index}\n指摘 ${found.findings}（守りの外れ ${found.guarded}）\n${Math.round((Date.now() - t0) / 1000)} 秒\n`);
+process.stderr.write(`回のフォルダ ${result.dir}\n一覧 ${index}\n指摘 ${found.findings}（守りの外れ ${found.guarded}${found.unjudged > 0 ? `、本物の回だけで見る守り ${found.unjudged} は未確認` : ""}）\n${Math.round((Date.now() - t0) / 1000)} 秒\n`);
 console.log(oneLine(result, prev));
