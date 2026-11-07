@@ -15,10 +15,14 @@
 // 7. 同じ頁の同じ項目の選ぶ欄は 1 つ（2 つ目の選択肢は項目の種類でないので印が付かず、置けない）
 
 import { allowedTwice, bracketOwner, bracketBase, extraItemFields } from "./form-shape.ts";
-import { ledgerItem, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { clean, ledgerItem, LIMITS, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
 
 /** □ ごとに同じ項目を当てる種類の項目（読み取りの決まり 12 の例外。紙は □ の名前と台帳の種類を照らす） */
 const PER_MARK_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["medical.devices", "medical.medications"]);
+
+/** あり・なし の □ の名前（lib/forms/mapped-sheet.ts の YES・NO と同じ言葉） */
+const YES_WORD = /^(あり|有|有り|はい)$/;
+const NO_WORD = /^(なし|無|無し|いいえ)$/;
 
 const area = (b: FieldBox | null | undefined) => (b ? b.w * b.h : 0);
 const isText = (f: MappingField) => f.shape === "text" || f.shape === "lines";
@@ -49,11 +53,16 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
     const at = fields.indexOf(f);
     const marks: MappingField[] = [f];
     const between: MappingField[] = [];
+    /** 並びのすぐ後ろの項目なしの括弧の欄（枠に含めるだけ。欄はそのまま） */
+    let tail: MappingField | null = null;
     for (const g of fields.slice(at + 1)) {
       if (g.page !== f.page || g.section !== f.section) break;
       if (g.shape === "check" && g.item === f.item && g.box) marks.push(g);
       else if (g.item === f.item && isText(g) && bracketBase(g) !== null) between.push(g);
-      else break;
+      else {
+        if (g.item === null && !g.removed && isText(g) && g.box && marks.some((m) => squeeze(m.label) === bracketBase(g))) tail = g;
+        break;
+      }
     }
     // 名前の無い □・種類の幅の □（要介護 3〜5 の □ は 1 つなので並びにならない）はまとめない
     if (marks.length < 2 || marks.some((m) => m.label.trim() === "")) {
@@ -61,11 +70,19 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
       continue;
     }
     for (const g of [...marks, ...between]) done.add(g.id);
+    // あり・なし の並びの後ろの空き（「□なし □あり 病名（　）」）は、あり の中身を書く所。外すかは空きの決まり（freeSlots）で、ほかに書く欄が無ければ残す（T181）
+    const yesNo = marks.length === 2 && marks.some((m) => YES_WORD.test(squeeze(m.label))) && marks.some((m) => NO_WORD.test(squeeze(m.label)));
+    const last = fields.indexOf(marks[marks.length - 1]);
+    // 選択肢の名前の括弧（「あり（　）」「その他（　）」）は選ぶ欄の子（form-shape.ts の bracketOwner）で、項目を外さない。外すと子にならず、あり の中身が紙から消えた（T181）
+    const optionName = (g: MappingField) => marks.some((m) => squeeze(m.label) === bracketBase(g));
+    const keep = (g: MappingField) => optionName(g) || (yesNo && fields.indexOf(g) > last);
     const boxes = marks.map((m) => m.box!);
-    const box = unionOf(boxes);
+    // 欄の枠は選択肢の名前の括弧まで（T181）。□ の並びだけだと「その他」の後ろの空きが枠の外で、その他の中身が置けなかった
+    const box = unionOf([...boxes, ...[...between.filter(optionName), ...(tail ? [tail] : [])].flatMap((g) => (g.box ? [g.box] : []))]);
     out.push({
       ...f,
-      label: f.section || marks.map((m) => m.label).join("・"),
+      // 欄の名前は □ の名前（段の名前にすると、置けなかった欄・確かめの画面で「避難 避難」と出た。T181）
+      label: clean(marks.map((m) => m.label).join("・"), LIMITS.label),
       shape: "choice",
       options: marks.map((m) => m.label),
       optionBoxes: boxes,
@@ -73,7 +90,7 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
       ai: f.ai ? { ...f.ai, reason: `${f.ai.reason}（□ の並び）`, box } : f.ai,
     });
     // 括弧の欄を並びの後ろに（読みの順は確かめの画面の順だけで、紙の場所は box）
-    for (const g of between) out.push(freed(g, "□ の並びの括弧"));
+    for (const g of between) out.push(keep(g) ? g : freed(g, "□ の並びの括弧"));
   }
   return out;
 }
@@ -101,23 +118,48 @@ function keepWidest(fields: readonly MappingField[]): MappingField[] {
   const items = new Set([...extra.keys()].map((id) => fields.find((f) => f.id === id)!.item!));
   for (const item of items) {
     const same = fields.filter((f) => f.item === item && !f.removed && !bracketOwner(f, fields));
-    // 組は、余った欄と、それより前で同じ所にならない最初の値の欄（□ が先にあると extra の first は □）
-    const ids = new Set<string>(
-      [...extra.keys()]
-        .map((id) => same.find((f) => f.id === id))
-        .filter((f): f is MappingField => !!f)
-        .flatMap((f) => [f.id, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1).map((g) => g.id)]),
-    );
-    const group = same.filter((f) => ids.has(f.id) && carriesValue(f));
-    if (group.length < 2) continue;
-    const shaped = group.find((f) => !isText(f));
-    const wide = group.reduce((a, b) => (area(b.box) > area(a.box) ? b : a));
-    // 項目の名前の言葉を持つ欄が狭すぎなければそちら（「特記事項」と「助けてほしいこと」に「その他の特記」）
-    const named = group.find((f) => namesItem(f, item) && area(f.box) * 10 >= area(wide.box));
-    const keep = named ?? shaped ?? wide;
-    for (const f of group) if (f !== keep && isText(f)) drop.add(f.id);
+    // 組は、余った欄と、それより前で同じ所にならない最初の値の欄（□ が先にあると extra の first は □）。
+    // 頁ごとに書く項目（氏名・作成日など。PAGE_HEAD_ITEMS）の組は同じ頁の中だけ（T181。頁の頭の「氏名」「利用者名」・「作成日」「記入日」は
+    // 頁ごとに名前と場所が違い、2 頁目の欄が空いた）。頁をまたぐのは、日付の形の欄の項目を、別の頁の日付の言葉の無い字の欄に当てた読み（T176）だけ。
+    // ほかの項目（課題・持ち出し品・特記）は頁をまたいでも 1 つ（2 頁の別の欄に同じ値を 2 回書くと、見直しの要確認と置けずが r9・r11 の数え直しで増えた）
+    const pairs = [...extra.keys()]
+      .map((id) => same.find((f) => f.id === id))
+      .filter((f): f is MappingField => !!f)
+      .map((f) => [f, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && (g.page === f.page || !PAGE_HEAD_ITEMS.has(item) || strayAcross(g, f)) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1)]);
+    for (const group of joined(pairs).map((ids) => same.filter((f) => ids.has(f.id) && carriesValue(f)))) {
+      if (group.length < 2) continue;
+      const shaped = group.find((f) => !isText(f));
+      const wide = group.reduce((a, b) => (area(b.box) > area(a.box) ? b : a));
+      // 項目の名前の言葉を持つ欄が狭すぎなければそちら（「特記事項」と「助けてほしいこと」に「その他の特記」）
+      const named = group.find((f) => namesItem(f, item) && area(f.box) * 10 >= area(wide.box));
+      const keep = named ?? shaped ?? wide;
+      for (const f of group) if (f !== keep && isText(f)) drop.add(f.id);
+    }
   }
   return fields.map((f) => (drop.has(f.id) ? freed(f, "同じ項目の欄") : f));
+}
+
+/** 頁ごとに頭や終わりに書く項目（本人の名前と、紙を作った日） */
+const PAGE_HEAD_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["person.name", "person.kana", "plan.date"]);
+const DATE_WORD = /日|年月|生年/;
+const PHONE_WORD = /電話|TEL|携帯|連絡/i;
+/** 別の頁の、日付・電話の形の欄 g の項目を当てた、その形の言葉の無い字の欄 f（頁をまたいで組にしてよい読み違い） */
+function strayAcross(g: MappingField, f: MappingField): boolean {
+  if (!isText(f) || (g.shape !== "date" && g.shape !== "phone")) return false;
+  return !(g.shape === "date" ? DATE_WORD : PHONE_WORD).test(nfkc(f.label));
+}
+
+/** 組の並びを、欄を共にする組どうしでつなぐ（欄の id の集まり） */
+function joined(pairs: ReadonlyArray<readonly MappingField[]>): Array<Set<string>> {
+  const out: Array<Set<string>> = [];
+  for (const p of pairs) {
+    const ids = new Set(p.map((f) => f.id));
+    const hit = out.filter((s) => [...ids].some((id) => s.has(id)));
+    const merged = new Set([...ids, ...hit.flatMap((s) => [...s])]);
+    for (const s of hit) out.splice(out.indexOf(s), 1);
+    out.push(merged);
+  }
+  return out;
 }
 
 const nfkc = (s: string) => s.normalize("NFKC");
@@ -128,7 +170,12 @@ const SLOT = /[(【[〔](?:[^)】\]〕]*\s[^)】\]〕]*|[~〜ー\-・…]*)[)】
 /** 欄の名前に空きがあるか（台の数える口も同じ物を使う。tools/eval/forms/drift.ts） */
 export const hasSlot = (label: string) => SLOT.test(nfkc(label));
 
-/** 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし */
+/**
+ * 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし。
+ * 親が あり・なし の □・選ぶ欄なら、外すのは同じ頁・同じ項目で値を書く欄がほかにある時だけ（T181）。「□なし □あり 病名（　）」の空きは、
+ * ほかに書く欄が無ければ項目の値を書く所で、外すとアレルギーの名前・病名が紙から消えた（項目を外した欄は未確認になるだけで、落とした数に出ない）。
+ * 親が種類の並び（手帳の種類）の空き（「（部位　）」）は種類の添えを書く所で、項目の値を丸ごと書くと置けないので今までどおり外す（r11 の数え直しで要確認が 64 増えた）
+ */
 function freeSlots(fields: readonly MappingField[]): MappingField[] {
   return fields.map((f) => {
     if (f.removed || !f.item || !isText(f) || PER_MARK_ITEMS.has(f.item) || !hasSlot(f.label)) return f;
@@ -137,12 +184,21 @@ function freeSlots(fields: readonly MappingField[]): MappingField[] {
     // 「要介護（　）級」と □ 要介護の組は □ の中身を書く所（読み取りの補いの括弧、item-hints.ts の 1）
     const head = squeeze(nfkc(f.label).split(SLOT)[0]);
     if (parents.some((g) => g.shape === "check" && squeeze(g.label) === head)) return f;
+    // 親が あり・なし（□ あり・あり なし の選ぶ欄）で、値を書く欄がほかに無い空きは あり の中身を書く所。種類の並びの親の空き（「（部位　）」「（　）級」）は今までどおり外す
+    const writers = fields.filter((g) => g !== f && !g.removed && g.page === f.page && g.item === f.item && carriesValue(g) && !bracketOwner(g, fields));
+    const yesParent = parents.every((g) => (g.shape === "check" && YES_WORD.test(squeeze(g.label))) || yesNoChoice(g));
+    if (yesParent && writers.length === 0) return f;
     return freed(f, "親の項目の空き");
   });
 }
 
 /** 項目の名前そのものを持つ欄か（「支援の内容」と「支援内容」。部分の言葉だけの namesItem より強い） */
 const fullName = (f: MappingField, item: LedgerItemKey) => squeeze(f.label).includes(squeeze(ledgerItem(item).label).replace(/の/g, ""));
+
+/** 種類の並びを持つ項目（行の名前が種類の あり・なし の選ぶ欄を、行ごとに残す） */
+const ROW_KIND_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["evacuation.hazards", "evacuation.support"]);
+/** あり・なし の 2 つを選ぶ欄 */
+const yesNoChoice = (f: MappingField) => f.shape === "choice" && f.options.length === 2 && f.options.some((o) => YES_WORD.test(squeeze(o))) && f.options.some((o) => NO_WORD.test(squeeze(o)));
 
 /** 同じ頁の同じ項目の選ぶ欄は 1 つ（項目の名前そのものの欄か、最初の欄）。種類ごとの項目は決まり 12 の例外 */
 function keepOneChoice(fields: readonly MappingField[]): MappingField[] {
@@ -155,6 +211,9 @@ function keepOneChoice(fields: readonly MappingField[]): MappingField[] {
   const drop = new Set<string>();
   for (const group of groups.values()) {
     if (group.length < 2) continue;
+    // 種類ごとの あり・なし の行（「洪水浸水想定区域 □あり □なし」「土砂災害警戒区域 □あり □なし」。T181）: 行の名前が種類で、紙は行ごとに種類を照らす
+    // （lib/forms/mapped-sheet.ts の shapeCell）。2 つ目からを外すと、その行が未確認になった
+    if (ROW_KIND_ITEMS.has(group[0].item!) && group.every(yesNoChoice) && new Set(group.map((f) => squeeze(f.label))).size === group.length) continue;
     const keep = group.find((f) => fullName(f, f.item!)) ?? group[0];
     for (const f of group) if (f !== keep) drop.add(f.id);
   }
@@ -170,6 +229,15 @@ function freeSignDates(fields: readonly MappingField[]): MappingField[] {
     const near = [fields[i - 2], fields[i - 1], fields[i + 1], fields[i + 2]].filter((g): g is MappingField => !!g && g.page === f.page && !g.removed);
     return near.some((g) => (g.shape === "handwrite" && SIGN_WORD.test(`${g.label}`)) || (g.shape !== "handwrite" && g.item === null && SIGN_WORD.test(`${g.label}${g.options.join("")}`))) ? freed(f, "署名の隣の日付") : f;
   });
+}
+
+/** 項目を外した決まり（理由の添え）。署名の隣の日付は本人が書くので、値を落とした数に入れない */
+const FREED_MARKS = ["□ の並びの括弧", "同じ項目の欄", "親の項目の空き", "同じ項目の選ぶ欄"].map((r) => `（${r}）`);
+
+/** この決まりで項目を外した欄なら、外す前の項目（台の「欄から値が消えた数」が使う。tools/eval/forms/look.ts） */
+export function settleFreedItem(f: Pick<MappingField, "item" | "ai">): LedgerItemKey | null {
+  const c = f.ai?.candidate;
+  return f.item === null && c && FREED_MARKS.some((m) => f.ai!.reason.includes(m)) ? (c as LedgerItemKey) : null;
 }
 
 /** 読み取りの答えの形をそろえる（欄の id は変えない。まとめた □ は最初の □ の id） */
