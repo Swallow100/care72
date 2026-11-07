@@ -5,6 +5,7 @@ import { BrandMark } from "@/components/brand/BrandMark";
 import { Page } from "@/components/ui/Panel";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { currentChoice, roleChoicesFor } from "@/lib/auth/choices";
+import { choiceGroups } from "@/lib/auth/role-rows";
 import { homePath, LOGIN_PATH, SANDBOX_CHOICE, SANDBOX_LABELS } from "@/lib/auth/roles";
 import { getPrincipal } from "@/lib/auth/server";
 import { canChooseRole } from "@/lib/auth/wall";
@@ -34,31 +35,72 @@ export default async function RoleSelectPage({ searchParams }: { searchParams: P
         </div>
       </div>
       <form method="post" action="/api/auth/role" className="mt-4 grid gap-1">
-        {choices.map((c) => {
-          const current = now === c.role;
-          const full = limit && c.role === SANDBOX_CHOICE;
-          return (
-            <SubmitButton
-              key={c.role}
-              bare
-              name="role"
-              value={c.role}
-              aria-current={current ? "true" : undefined}
-              className={`relative flex min-h-14 items-baseline justify-between gap-4 rounded-lg bg-panel px-4 py-3.5 text-left ${
-                current ? "outline-2 -outline-offset-2 outline-accent" : ""
-              }`}
-            >
-              <span className="text-lg font-bold">{c.label}</span>
-              {full ? (
-                <span role="alert" className="font-bold text-danger">
-                  {SANDBOX_LABELS.limit}
-                </span>
-              ) : (
-                c.sub && <span className="text-muted">{c.sub}</span>
+        {choiceGroups(choices).map((g, i) =>
+          g.nested ? (
+            // 新規事業所の中の役（T180）。左に ケアマネ・医療班・利用者の名前、右にボタン（利用者ごとに 本人・娘 などを 1 行に）
+            <div key={i} className="ml-4 grid gap-1 py-1" data-sandbox-roles>
+              {g.blocks.map((b, j) =>
+                b.kind === "note" ? (
+                  <p key={j} className="px-1 text-sm text-muted">
+                    {b.label}
+                  </p>
+                ) : b.kind === "row" ? (
+                  <div key={j} className="flex items-center gap-3">
+                    <span className="w-24 shrink-0 truncate text-sm text-muted" title={b.label}>
+                      {b.label}
+                    </span>
+                    <div className="flex min-w-0 flex-wrap gap-1">
+                      {b.items.map((c) => (
+                        <SubmitButton
+                          key={c.role}
+                          bare
+                          name="role"
+                          value={c.role}
+                          aria-current={now === c.role ? "true" : undefined}
+                          aria-label={c.name}
+                          title={c.name}
+                          className={`relative inline-flex min-h-10 items-center rounded-lg bg-panel px-3 font-bold whitespace-nowrap ${
+                            now === c.role ? "outline-2 -outline-offset-2 outline-accent" : ""
+                          }`}
+                        >
+                          {c.label}
+                        </SubmitButton>
+                      ))}
+                    </div>
+                  </div>
+                ) : null,
               )}
-            </SubmitButton>
-          );
-        })}
+            </div>
+          ) : (
+            g.blocks.map((b) => {
+              if (b.kind !== "one") return null;
+              const c = b.item;
+              const current = now === c.role;
+              const full = limit && c.role === SANDBOX_CHOICE;
+              return (
+                <SubmitButton
+                  key={c.role}
+                  bare
+                  name="role"
+                  value={c.role}
+                  aria-current={current ? "true" : undefined}
+                  className={`relative flex min-h-14 items-baseline justify-between gap-4 rounded-lg bg-panel px-4 py-3.5 text-left ${
+                    current ? "outline-2 -outline-offset-2 outline-accent" : ""
+                  }`}
+                >
+                  <span className="text-lg font-bold">{c.label}</span>
+                  {full ? (
+                    <span role="alert" className="font-bold text-danger">
+                      {SANDBOX_LABELS.limit}
+                    </span>
+                  ) : (
+                    c.sub && <span className="text-muted">{c.sub}</span>
+                  )}
+                </SubmitButton>
+              );
+            })
+          ),
+        )}
       </form>
     </Page>
   );

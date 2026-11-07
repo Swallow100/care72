@@ -4,7 +4,7 @@ import { PersonWithIntake } from "@/components/person/PersonWithIntake";
 import { ReceivedPerson } from "@/components/staff/ReceivedPerson";
 import { BackLink, Page } from "@/components/ui/Panel";
 import { todayJst } from "@/lib/age";
-import { homePath } from "@/lib/auth/roles";
+import { homePath, medicalChoiceOf } from "@/lib/auth/roles";
 import { requirePage } from "@/lib/auth/server";
 import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { scopeOfRows } from "@/lib/consent/scope";
@@ -69,7 +69,7 @@ export default async function PersonPage({ params, searchParams }: Props) {
       {/* 戻るは左上に 1 つ */}
       <BackLink href={homePath(principal.role)} />
       <div className="mt-1">
-        <PersonWithIntake view={view} level={1} intake={intake} staffEntry={canChooseRole(principal)} />
+        <PersonWithIntake view={view} level={1} intake={intake} staffEntry={canChooseRole(principal)} staffRole={medicalChoiceOf(principal)} />
       </div>
     </Page>
   );

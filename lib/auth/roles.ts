@@ -61,6 +61,14 @@ export function parseSandboxChoice(v: unknown): SandboxTarget | null {
   return null;
 }
 
+/**
+ * 医療班の入口（ヘッダーの「医療班」T173、依頼中の面の「受入一覧」T166）の役の値。新規事業所の中（T180）では新規事業所の医療班
+ * （デモの医療班に新規事業所の依頼は届かない）、ほかはデモの医療班
+ */
+export function medicalChoiceOf(p: { sandbox?: boolean }): string {
+  return p.sandbox ? sandboxChoiceValue({ role: "medical" }) : "medical";
+}
+
 /** 役の一覧の「新規事業所」の言葉と、作った事業所の初めの名前（審査員が /office で直せる） */
 export const SANDBOX_LABELS = {
   choice: "新規事業所",

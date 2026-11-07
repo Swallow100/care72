@@ -51,7 +51,9 @@ describe("2. 医療班の入口", () => {
     const header = read("../components/AppHeader.tsx");
     expect(header).toContain("<NavLinks>{p && canChooseRole(p) && <StaffEntry");
     const menu = read("../components/ui/RoleMenu.tsx");
-    expect(menu).toMatch(/action="\/api\/auth\/role"[^]*name="role" value="medical"/);
+    // 値は既定がデモの医療班、新規事業所の中では新規事業所の医療班（T180、lib/auth/roles.ts の medicalChoiceOf）
+    expect(menu).toMatch(/value = "medical"[^]*action="\/api\/auth\/role"[^]*name="role" value=\{value\}/);
+    expect(header).toContain("value={medicalChoiceOf(p)}");
     expect(REQUEST_LABELS.toStaffName).toBe("医療班 受入一覧");
   });
   it("筋の最短は 1 手。読みの頭に無ければ台が数える", () => {

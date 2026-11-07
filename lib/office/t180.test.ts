@@ -9,7 +9,11 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { seedStatements } from "../../seed/sql.ts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { RoleMenu } from "../../components/ui/RoleMenu.tsx";
 import { currentChoice, roleChoicesFor } from "../auth/choices.ts";
+import { choiceBlocks, choiceGroups } from "../auth/role-rows.ts";
 import {
   DEMO_CARE_MANAGER_ID,
   DEMO_FAMILY_CONTACT_ID,
@@ -123,7 +127,7 @@ async function addCm(p: Principal, name: string, loginId: string) {
   return r.account.id;
 }
 
-async function as(token: string, target: SandboxTarget, at = NOW + 20) {
+async function as(token: string | null, target: SandboxTarget, at = NOW + 20) {
   return chooseSandboxRole(db, env(), SECRET, token, target, at);
 }
 
@@ -463,5 +467,37 @@ describe("役の一覧", () => {
     const rows = new Set(list.filter((c) => c.row && c.row !== "ケアマネ" && c.row !== "医療班").map((c) => c.row));
     expect(rows.size).toBe(20);
     expect(list.at(-1)).toMatchObject({ role: "", label: "ほか 5人" });
+  });
+});
+
+describe("役変更の一覧の形", () => {
+  const choices = [
+    { role: "care_manager", label: "ケアマネジャー", sub: "山本" },
+    { role: SANDBOX_CHOICE, label: "新規事業所", sub: "試用事業所" },
+    { role: "sandbox:care_manager:acct-sbx-2", label: "架空 次郎", sub: null, row: "ケアマネ", name: "ケアマネ 架空 次郎" },
+    { role: "sandbox:medical", label: "受入一覧", sub: null, row: "医療班", name: "医療班 受入一覧" },
+    { role: "sandbox:self:p-1", label: "本人", sub: null, row: "架空 花子", name: "架空 花子 本人" },
+    { role: "sandbox:family:c-1", label: "娘", sub: null, row: "架空 花子", name: "架空 花子さんの娘 架空 花子の娘" },
+    { role: "", label: "ほか 3人", sub: null, note: true as const },
+  ];
+
+  it("利用者ごとに本人と家族を 1 行に。新規事業所の中の役は 1 つの面にまとめ、今の役は枠と太字", () => {
+    const blocks = choiceBlocks(choices);
+    expect(blocks.map((b) => (b.kind === "row" ? `${b.label}:${b.items.length}` : b.kind))).toEqual([
+      "one",
+      "one",
+      "ケアマネ:1",
+      "医療班:1",
+      "架空 花子:2",
+      "note",
+    ]);
+    expect(choiceGroups(choices).map((g) => g.nested)).toEqual([false, true]);
+    const html = renderToStaticMarkup(createElement(RoleMenu, { label: "役変更", current: "sandbox:self:p-1", choices }));
+    expect(html.match(/data-sandbox-roles/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="架空 花子さんの娘 架空 花子の娘"');
+    expect(html).toMatch(/aria-current="true"[^>]*value="sandbox:self:p-1"|value="sandbox:self:p-1"[^>]*aria-current="true"/);
+    expect(html).toContain("ほか 3人");
+    // 役変更の読み上げの名前はデモの役と「新規事業所」だけ（中の役を全部並べない）
+    expect(html).toContain('aria-label="役変更 ケアマネジャー・新規事業所"');
   });
 });
