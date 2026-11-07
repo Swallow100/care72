@@ -22,6 +22,7 @@ import {
   historyLines,
   REVIEW_SOURCES,
   REVIEW_WORLD_LINES,
+  triesText,
   reviewError,
   reviewSentences,
   talkWordsSection,
@@ -183,7 +184,7 @@ export function personText(
     }`,
   );
   const r = s.reached.find((x) => x.person === person);
-  lines.push(`- 条件に達した: ${r ? `${reachedText(r)}（切れた時刻 ${minuteText(r.outMinute)}、切れるまでの届かなかった手 ${r.tries}）` : "なし"}`);
+  lines.push(`- 条件に達した: ${r ? `${reachedText(r)}（切れた時刻 ${minuteText(r.outMinute)}、${triesText(r.tries)}）` : "なし"}`);
   const blank = s.form9.rows.find((x) => x.person === person);
   lines.push(`- 様式 9 の空欄: ${blank ? blank.columns.map((c) => FORM9_PLAN_LABELS[c]).join("・") : "なし"}`);
   const wasted = (s.wasted?.rows ?? []).filter((x) => x.person === person);

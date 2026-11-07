@@ -82,7 +82,15 @@ export type ReviewSection = { topic: ReviewTopic; text: string };
 export type ReviewBody = { summary: string; findings: ReviewFinding[]; sections?: ReviewSection[]; good?: string[] };
 
 /** 項目ごとの文・良かった所の字数（指示に書く数と、切る数） */
-export const SECTION_ASK = 120;
+export const SECTION_ASK = 90;
+
+/**
+ * 時計が切れる前に打った手の数の言い方（評価の 12 回目の 2 回目。「届かなかった手 0」を Haiku が二重の否定で写した）。
+ * 人ごとの講評（person-review.ts）と全体の講評の入力で同じ言い方
+ */
+export function triesText(tries: number): string {
+  return tries > 0 ? `切れる前に打った手 ${tries}、届く前に切れた` : "切れる前に打った手なし";
+}
 export const SECTION_TEXT_MAX = 200;
 export const GOOD_MAX = 3;
 export const GOOD_ASK = 60;
@@ -165,7 +173,7 @@ export const REVIEW_SYSTEM = [
   ...REVIEW_WORLD_LINES,
   "",
   "返す JSON:",
-  `- summary: 全体の講評（${SUMMARY_ASK} 字まで）。次の訓練で試す事を 1〜2 つ。`,
+  `- summary: 全体の講評（${SUMMARY_ASK} 字まで）。次の訓練で試す事を 1〜2 つ。項目別や指摘に書く事を繰り返さない。`,
   `- findings: 指摘の配列。重い順（${REVIEW_WEIGHT.join(" → ")}）に、「指摘の候補（種類ごと）」の数まで、合わせて ${REVIEW_LIMIT} つまで。数をそろえない・埋めない（指摘する事が無ければ空の配列）。同じ種類は 1 つにまとめ、人が多ければ代表の人と人数で書く（person は「全体」でよい）。候補の無い種類は書かない。`,
   "  - person: 本人の仮名（「A さん」）。全体のことは「全体」。",
   "  - kind: order（対応の順番）・report（市役所への報告）・blank（様式 9 の空欄）・reached（時計が切れるまで手が届かなかった）・call（着信への応答）・choice（手の選び方。空振り・重複・頼み事への対応）・other のどれか。",
@@ -359,7 +367,7 @@ export function reviewText(
     `- 条件に達した人（時計の計算。時計が切れるまでに、その人へ届いた手が無い）: ${s.reached.length}`,
   );
   for (const r of s.reached) {
-    lines.push(`  - ${who(r.person)}: ${reachedText(r)}（切れた時刻 ${minuteText(r.outMinute)}、切れるまでの届かなかった手 ${r.tries}）`);
+    lines.push(`  - ${who(r.person)}: ${reachedText(r)}（切れた時刻 ${minuteText(r.outMinute)}、${triesText(r.tries)}）`);
   }
   if (s.ended) {
     lines.push(`- 結末（AI の筋書き。世界が流れの中で決めた。上の時計の計算とは別の数）: ${s.ended.length}`);
