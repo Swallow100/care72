@@ -69,6 +69,19 @@ export function sandboxRegisteredSql(alias: string): string {
 }
 
 /**
+ * SQL の条件: 本人（alias の表の行）が審査員の試用事業所の人でも、試用事業所のアカウントがその場で登録した人でもない。
+ * 壁の外の医療班・行政（本物）の受入一覧・検索・避難所・受入に、審査員が作った人と依頼を混ぜない（11/7 の見直し）
+ */
+export function notSandboxPersonSql(alias: string): string {
+  return `(${alias}.office_id NOT IN (SELECT id FROM offices WHERE judge_sandbox = 1) AND NOT ${sandboxRegisteredSql(alias)})`;
+}
+
+/** 医療班・行政の役の人の条件（先頭に AND）。壁の中はその種の事業所のデモの人、壁の外は試用事業所の人を除く */
+export function staffWallSql(actor: { walled?: boolean; wallOffice?: string }, alias = "p", demoOffice: string): string {
+  return actor.walled ? ` AND ${demoPersonSql(alias, actor.wallOffice ?? demoOffice)}` : ` AND ${notSandboxPersonSql(alias)}`;
+}
+
+/**
  * SQL の条件: 本人（alias の表の行）がその種の事業所のデモの人（その事業所の人か、その事業所のアカウントが登録した所属なしの人）。
  * officeId は壁の中の人の wallOfficeOf
  */
