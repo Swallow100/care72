@@ -208,6 +208,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "forms-review-check", clients: ["real"], bench: "forms", item: "forms.reviewCheck", op: "<=", value: 591, since: "r10", task: "T175", label: "見直しの要確認を読み方の揺れで増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts", "lib/forms/review.ts"] },
   { id: "forms-unplaced-limit", clients: ["real"], bench: "forms", item: "forms.unplaced", op: "<=", value: 157, since: "r10", task: "T175", label: "置けなかった欄を増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts"] },
   { id: "forms-review-drift", clients: ["real"], bench: "forms", item: "forms.reviewDrift", op: "<=", value: 245, since: "r10", task: "T175", label: "同じ様式の要確認の回ごとの差を広げない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-read.ts", "tools/eval/forms/drift.ts"] },
+  // T179: 評価の 11 回目で松山市の住居の構造を □ 1 つに読み、入力の 54 枚で紙が空いた（項目は同じで様式の当たりと要確認に出ない）。線は本物の回の数の r8 6,372（r9 6,392・r11 6,331）。
+  // 数え直しは前の答えを返すので本物の回だけで見る。考えは docs/progress/t179.md。比（当たり/字のある欄）なので様式を絞った回でも同じ物差し
+  { id: "forms-paper-total", clients: ["real"], bench: "forms", item: "forms.paper.total", op: ">=", value: 6372 / 6509, since: "r12", task: "T179", label: "紙の全体を読みの形の揺れで落とさない", suspects: ["lib/forms/lone-mark.ts", "lib/forms/read-settle.ts", "lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
   { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
