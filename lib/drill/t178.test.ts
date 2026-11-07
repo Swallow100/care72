@@ -2,7 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
+import { advance, initialState, type DrillTurn, type PersonaInput } from "./engine.ts";
+import { EVENT_CATALOG } from "./event-catalog.ts";
+import type { DirectorEvent } from "./incident-types.ts";
 import { factsOf, planOf, sentenceSlip, slipContextOf, startsMove, talkContextOf } from "./person-facts.ts";
+import { fireScheduled } from "./schedule.ts";
+import { changesWhere, SAME_CUT_HOLD_MINUTES } from "./state-rules.ts";
 import { EMPTY_WORLD } from "./scenarios.ts";
 
 const source = (id: string) => {
@@ -81,5 +86,69 @@ describe("移る言葉（門と台が同じ表）", () => {
   it("通話でも移れない人は同じ文で落ちる", () => {
     expect(sentenceSlip("これから移ります。", talkContextOf(stuck))).toBe("move_said");
     expect(sentenceSlip("移る手だてを頼みます。", talkContextOf(stuck))).not.toBe("move_said");
+  });
+});
+
+describe("同じ刻みの出来事と連絡", () => {
+  const seed = (id: string) => SEED_PEOPLE.find((x) => x.person.id === id)!;
+  const eventSource = (id: string) => ({ person: seed(id).person, ledger: seed(id).ledger, contacts: seed(id).contacts, clocks: seed(id).clocks });
+
+  it("家族の帰宅困難は同居の家族のいる人に出さない。同居がいなければ前のまま", () => {
+    const row = EVENT_CATALOG.family_stranded;
+    const can = (id: string) => row.eligible(eventSource(id) as never, id, EMPTY_WORLD, null);
+    for (const id of SEED_PEOPLE.map((p) => p.person.id)) {
+      const fam = seed(id).contacts.filter((c) => c.kind === "family");
+      const together = fam.some((c) => c.reach === "together");
+      const far = fam.some((c) => c.reach !== null && c.reach !== "together");
+      expect([id, can(id)]).toEqual([id, far && !together]);
+    }
+  });
+
+  it("いる所を変える出来事の見分け", () => {
+    expect(changesWhere({ kind: "mark", mark: "wandering" })).toBe(true);
+    expect(changesWhere({ kind: "mark", mark: "carSleep" })).toBe(true);
+    expect(changesWhere({ kind: "going_home" })).toBe(true);
+    expect(changesWhere({ kind: "mark", mark: "familyAway" })).toBe(false);
+    expect(changesWhere({ kind: "nurse_away" })).toBe(false);
+  });
+
+  it("次へ回した出来事は AI の印と種類を持ったまま時刻が来る", () => {
+    const world = { ...EMPTY_WORLD, scheduled: [{ at: 600, change: { kind: "mark" as const, mark: "wandering" as const }, text: "本人が家の外へ出た", person: "p-04", by: "director" as const, ai: true, inject: "wandering" as const }] };
+    const { incidents, world: rest } = fireScheduled(world, 600);
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]).toMatchObject({ ai: true, inject: "wandering", person: "p-04", at: 10 });
+    expect(rest.scheduled).toEqual([]);
+    expect(fireScheduled({ ...EMPTY_WORLD, scheduled: [{ at: 60, change: { kind: "outage_restored" as const }, text: "停電 復旧", by: "director" as const }] }, 60).incidents[0].ai).toBe(false);
+  });
+
+  describe("監督の出来事の当たり方（engine）", () => {
+    const P = "p-04";
+    const start = () => initialState("earthquake", SEED_PEOPLE.map((p) => p.person.id), "2026-11-07T01:00:00.000Z", { clock: true });
+    const wander: DirectorEvent = { inject: "wandering", person: P, text: "本人が家の外へ出て行き先が分からない", ai: true };
+    const hooksWith = (saying: string) =>
+      ({
+        director: async () => [wander],
+        persona: async (input: PersonaInput): Promise<DrillTurn[]> => (input.person === P ? [{ person: P, color: "green", source: "supporter", whereNow: "home", at: input.hour, saying, doing: null, injured: null, atHome: null, canMove: null, hasMedicine: null, ai: true }] : []),
+      }) as never;
+
+    it("同じ時刻に連絡のある人のいる所を変える出来事は次の区切りへ回り、回したあとに当たる", async () => {
+      const first = await advance(start(), 0, {} as never, { policy: "clock" } as never);
+      const a = await advance(first!.state, 600, hooksWith("様子を見ました。"), { policy: "clock" } as never);
+      expect(a!.tick.turns.filter((t) => t.person === P).length).toBeGreaterThan(0);
+      expect(a!.tick.incidents.some((e) => e.person === P && e.change.kind === "mark")).toBe(false);
+      expect(a!.state.world.scheduled?.map((s) => s.at)).toEqual([600 + SAME_CUT_HOLD_MINUTES]);
+      const b = await advance(a!.state, 600 + SAME_CUT_HOLD_MINUTES + 60, { persona: async () => [] } as never, { policy: "clock" } as never);
+      const got = b!.tick.incidents.find((e) => e.person === P && e.change.kind === "mark");
+      expect(got).toBeTruthy();
+      expect(got!.ai).toBe(true);
+      expect(b!.state.world.marks[P]?.wandering).toBeDefined();
+    });
+
+    it("連絡の無い人には今までどおり区切りの終わりに当たる", async () => {
+      const first = await advance(start(), 0, {} as never, { policy: "clock" } as never);
+      const a = await advance(first!.state, 600, { director: async () => [wander], persona: async () => [] } as never, { policy: "clock" } as never);
+      expect(a!.tick.incidents.some((e) => e.person === P && e.change.kind === "mark")).toBe(true);
+      expect(a!.state.world.scheduled ?? []).toEqual([]);
+    });
   });
 });

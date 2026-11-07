@@ -41,7 +41,8 @@ import {
 } from "../../../lib/drill/person-facts.ts";
 import type { ActionRecord } from "../../../lib/drill/action-types.ts";
 import type { PersonState, TurnMove } from "../../../lib/drill/persona-types.ts";
-import type { WorldState } from "../../../lib/drill/scenarios.ts";
+import type { WorldChange, WorldState } from "../../../lib/drill/scenarios.ts";
+import { changesWhere } from "../../../lib/drill/state-rules.ts";
 import { REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { clockStartOf, startHourOf } from "../../../lib/drill/night.ts";
 import { LOST_MAX_MINUTES } from "../../../lib/drill/lost.ts";
@@ -331,6 +332,23 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     }
   }
 
+  // 同じ刻みの出来事と連絡（T178）。いる所を変える出来事と同じ時刻かそのあとに「家」の連絡がある形（監督を次の区切りへ回すので 0 のはず）と、
+  // 同居の家族のいる人の家族の帰宅困難（出来事の字は誰かを言わず、一緒にいる連絡と食い違って読める）
+  for (const t of r.ticks) {
+    for (const e of t.incidents) {
+      const c = e.change as WorldChange | undefined;
+      if (!e.person || !c) continue;
+      const minute = Math.round((e.at ?? t.hour) * 60);
+      if (changesWhere(c)) {
+        checked += 1;
+        for (const u of t.turns) {
+          if (u.person === e.person && Math.round((u.at ?? t.hour) * 60) >= minute && placeOfState(stateOf({ ...u, at: u.at ?? t.hour })) === "home") hit("same_cut_place", e.person, minute, `${c.kind} → ${u.source ?? ""} 家`);
+        }
+      }
+      if (c.kind === "mark" && c.mark === "familyAway" && (people[e.person]?.together.length ?? 0) > 0) hit("family_away_together", e.person, minute, "同居の家族のいる人の帰宅困難");
+    }
+  }
+
   // 電池の残りの数の流れ（T158）。同じ人の言った残りから終わる時刻を出し、前に言った物と食い違う（予備に替えた・電気が戻ったと言わずに）
   for (const [person, segs] of batterySaid(byPerson, r.actions as LooseAction[])) {
     for (const said of segs) for (let i = 1; i < said.length; i++) {
@@ -406,7 +424,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer" | "move_unrecorded";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer" | "move_unrecorded" | "same_cut_place" | "family_away_together";
 
 /** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
 export const DOWN_SILENT_MINUTES = 240;
