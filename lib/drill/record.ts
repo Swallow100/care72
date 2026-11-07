@@ -19,7 +19,8 @@ import { withoutMemo } from "./engine.ts";
 import { endingsAllowed } from "./fiction.ts";
 import { outageForRuns } from "./outcome.ts";
 import { inOutageOf, planOf, scorePlans } from "./person-facts.ts";
-import { REVIEW_KINDS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident } from "./review.ts";
+import { parsePersons, personDigests, type StoredPerson, type StoredPersons } from "./person-review.ts";
+import { REVIEW_KINDS, REVIEW_TOPICS, type ReviewBody, type ReviewContext, type ReviewError, type ReviewFinding, type ReviewIncident, type ReviewTopic } from "./review.ts";
 import { loadCallRecords, type CallRecord } from "./responses.ts";
 import { isVirtual, scenarioOf } from "./scenarios.ts";
 import {
@@ -48,7 +49,10 @@ export type StoredReview =
       edited: (ReviewBody & { by: string | null; at: string }) | null;
     };
 
-export type StoredScore = { v: 1; at: string; score: DrillScore; review: StoredReview | null };
+/**
+ * drills.score の形。persons は人ごとの講評（T185）で、訓練の間から書く（採点の前は persons だけの殻。scoreOf が殻に採点を足す）
+ */
+export type StoredScore = { v: 1; at: string; score: DrillScore; review: StoredReview | null; persons?: StoredPersons };
 
 /** 作成中が古い（取り直してよい）とみなす分。Opus の 1 回の待ち 180 秒 × 再試行 1 回より長く */
 export const REVIEW_STALE_MINUTES = 8;
@@ -67,7 +71,16 @@ function parseBody(v: unknown): ReviewBody | null {
       basis: typeof f.basis === "string" && isSourceId(f.basis) ? f.basis : null,
     });
   }
-  return { summary: v.summary, findings };
+  // 項目ごとの文と良かった所（T185。前に保存した講評には無い）
+  const sections = Array.isArray(v.sections)
+    ? v.sections.flatMap((x) =>
+        isObj(x) && typeof x.text === "string" && typeof x.topic === "string" && (REVIEW_TOPICS as readonly string[]).includes(x.topic)
+          ? [{ topic: x.topic as ReviewTopic, text: x.text }]
+          : [],
+      )
+    : [];
+  const good = Array.isArray(v.good) ? v.good.filter((x): x is string => typeof x === "string") : [];
+  return { summary: v.summary, findings, ...(sections.length > 0 ? { sections } : {}), ...(good.length > 0 ? { good } : {}) };
 }
 
 function parseReview(v: unknown): StoredReview | null {
@@ -100,7 +113,7 @@ export function parseStoredScore(text: string | null): StoredScore | null {
     if (!isObj(v) || v.v !== 1 || !isObj(v.score) || typeof v.at !== "string") return null;
     const s = v.score as Partial<DrillScore>;
     if (s.v !== 1 || !s.order || !s.report || !s.form9 || !Array.isArray(s.reached) || !s.calls || !Array.isArray(s.participants)) return null;
-    return { v: 1, at: v.at, score: s as DrillScore, review: parseReview(v.review) };
+    return { v: 1, at: v.at, score: s as DrillScore, review: parseReview(v.review), persons: parsePersons(v.persons) };
   } catch {
     return null;
   }
@@ -254,6 +267,8 @@ export type DrillRecord = {
   screen: DrillScreen;
   score: DrillScore;
   review: StoredReview | null;
+  /** 人ごとの講評（T185。無ければ空） */
+  persons: StoredPersons;
   calls: CallRecord[];
   previous: PreviousRecord | null;
   /** 残した時刻（数えた時刻） */
@@ -278,10 +293,15 @@ async function scoreOf(
   const stored = parseStoredScore((await readStored(db, scope.officeId, id))?.text ?? null);
   if (stored) return stored;
   const score = await computeScore(db, scope, screen, calls, todayJst(new Date(now)));
-  const body: StoredScore = { v: 1, at: now, score, review: null };
+  const persons = parsePersons(safeJson((await readStored(db, scope.officeId, id))?.text ?? null)?.persons);
+  const body: StoredScore = { v: 1, at: now, score, review: null, persons };
+  // 人ごとの講評（T185）が訓練の間に書いた殻（persons だけ）には、persons を残したまま採点を足す
   const r = await db
-    .prepare("UPDATE drills SET score = ?3 WHERE id = ?1 AND office_id = ?2 AND score IS NULL AND status <> 'running'")
-    .bind(id, scope.officeId, JSON.stringify(body))
+    .prepare(
+      `UPDATE drills SET score = json_set(COALESCE(score, '{}'), '$.v', 1, '$.at', ?4, '$.score', json(?3), '$.review', json('null'))
+        WHERE id = ?1 AND office_id = ?2 AND status <> 'running' AND (score IS NULL OR json_type(score, '$.score') IS NULL)`,
+    )
+    .bind(id, scope.officeId, JSON.stringify(score), now)
     .run();
   if ((r.meta.changes ?? 0) > 0) return body;
   // ほかの要求が先に残した（か、形の崩れた物が残っている）。残っている物を読み直し、読めなければ数えた物を使う（書かない）
@@ -328,7 +348,7 @@ export async function loadDrillRecord(
   const stored = await scoreOf(db, scope, screen, calls, now);
   if (!stored) return "running";
   const previous = await previousOf(db, scope, screen, now);
-  return { screen, score: withExtras(stored.score, screen, calls), review: stored.review, calls, previous, scoredAt: stored.at };
+  return { screen, score: withExtras(stored.score, screen, calls), review: stored.review, persons: stored.persons ?? {}, calls, previous, scoredAt: stored.at };
 }
 
 // ---------- 講評の保存 ----------
@@ -387,20 +407,116 @@ export async function editReview(
   return (r.meta.changes ?? 0) > 0;
 }
 
-/** 講評の入力（訓練記録から。状況は刻みの状況を時刻の順に） */
+/** 講評の入力（訓練記録から。状況は刻みの状況を時刻の順に）。人ごとの講評（T185）ができていれば、その要旨も */
 export function reviewContextOf(rec: DrillRecord): ReviewContext {
-  const incidents: ReviewIncident[] = rec.screen.ticks.flatMap((t) => t.incidents.map((e) => ({ at: e.at, text: e.text, person: e.person ?? null })));
+  const digests = personDigests(rec.persons, rec.score.participants);
   return {
-    scenario: rec.screen.drill.scenario,
-    status: rec.screen.drill.status as DrillStatus,
-    score: rec.score,
-    // ケアマネのメモ（T59）は講評（Opus）に渡さない
-    actions: withoutMemo(rec.screen.state.actions),
-    calls: rec.calls,
-    incidents,
+    ...liveReviewContext(rec.screen, rec.score, rec.calls),
     previous: rec.previous ? { ...rec.previous.numbers, scenario: rec.previous.scenario } : null,
-    // T94: 手を打った時の世界（電話・施設の休止）と、通話の往復で頼まれた事
-    ticks: rec.screen.ticks.map((t) => ({ step: t.step, world: t.world })),
-    ...(rec.screen.state.world.asks ? { asks: rec.screen.state.world.asks } : {}),
+    ...(digests.length > 0 ? { persons: digests } : {}),
   };
+}
+
+/** 講評の入力（訓練の間でも。人ごとの講評〔T185〕が刻みの裏で使う。前回は入れない） */
+export function liveReviewContext(screen: DrillScreen, score: DrillScore, calls: ReadonlyArray<CallRecord>): ReviewContext {
+  const incidents: ReviewIncident[] = screen.ticks.flatMap((t) => t.incidents.map((e) => ({ at: e.at, text: e.text, person: e.person ?? null })));
+  return {
+    scenario: screen.drill.scenario,
+    status: screen.drill.status as DrillStatus,
+    score,
+    // ケアマネのメモ（T59）は講評（Opus）に渡さない
+    actions: withoutMemo(screen.state.actions),
+    calls,
+    incidents,
+    previous: null,
+    // T94: 手を打った時の世界（電話・施設の休止）と、通話の往復で頼まれた事
+    ticks: screen.ticks.map((t) => ({ step: t.step, world: t.world })),
+    ...(screen.state.world.asks ? { asks: screen.state.world.asks } : {}),
+  };
+}
+
+// ---------- 人ごとの講評の保存（T185） ----------
+
+/** JSON の文を読む（読めなければ null） */
+function safeJson(text: string | null): Record<string, unknown> | null {
+  if (!text) return null;
+  try {
+    const v = JSON.parse(text) as unknown;
+    return isObj(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 人ごとの講評を作っている印（訓練 1 つに 1 つ）が古いとみなす分（Haiku 20 秒 × 並べた数より長く） */
+export const PERSONS_STALE_MINUTES = 2;
+
+/** 本人の id（json の path に入れる前に確かめる） */
+const PERSON_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** 今の人ごとの講評（訓練の間でも読む。採点の前の殻も） */
+export async function readPersons(db: D1Database, officeId: string, id: string): Promise<StoredPersons> {
+  return (await readPersonsState(db, officeId, id)).persons;
+}
+
+/** 人ごとの講評と、刻みの裏で呼んだ回数（T185） */
+export async function readPersonsState(db: D1Database, officeId: string, id: string): Promise<{ persons: StoredPersons; tickCalls: number }> {
+  const v = safeJson((await readStored(db, officeId, id))?.text ?? null);
+  return { persons: parsePersons(v?.persons), tickCalls: typeof v?.personsTickCalls === "number" ? v.personsTickCalls : 0 };
+}
+
+/** 刻みの裏で呼んだ回数を足す */
+export async function addTickCalls(db: D1Database, officeId: string, id: string, n: number): Promise<void> {
+  if (n <= 0) return;
+  await db
+    .prepare(
+      `UPDATE drills SET score = json_set(COALESCE(score, '{}'), '$.personsTickCalls', COALESCE(json_extract(score, '$.personsTickCalls'), 0) + ?3)
+        WHERE id = ?1 AND office_id = ?2`,
+    )
+    .bind(id, officeId, n)
+    .run();
+}
+
+/**
+ * 人ごとの講評を作る印を取る（取れたら true）。無い・古いときだけ。刻みの裏（waitUntil）が重なっても、終わりの講評と重なっても 1 つだけ作る
+ */
+export async function claimPersons(db: D1Database, officeId: string, id: string, now: string): Promise<boolean> {
+  const stale = new Date(Date.parse(now) - PERSONS_STALE_MINUTES * 60_000).toISOString();
+  const r = await db
+    .prepare(
+      `UPDATE drills SET score = json_set(COALESCE(score, '{}'), '$.personsAt', ?3)
+        WHERE id = ?1 AND office_id = ?2
+          AND (score IS NULL OR json_extract(score, '$.personsAt') IS NULL OR json_extract(score, '$.personsAt') < ?4)`,
+    )
+    .bind(id, officeId, now, stale)
+    .run();
+  return (r.meta.changes ?? 0) > 0;
+}
+
+/** 印を外す（claimedAt に取った物だけ） */
+export async function releasePersons(db: D1Database, officeId: string, id: string, claimedAt: string): Promise<void> {
+  await db
+    .prepare(`UPDATE drills SET score = json_remove(score, '$.personsAt') WHERE id = ?1 AND office_id = ?2 AND json_extract(score, '$.personsAt') = ?3`)
+    .bind(id, officeId, claimedAt)
+    .run();
+}
+
+/** 1 人分を書く（ほかの人と講評は残す） */
+export async function savePerson(db: D1Database, officeId: string, id: string, person: string, rec: StoredPerson): Promise<void> {
+  if (!PERSON_ID.test(person)) return;
+  await db
+    .prepare(`UPDATE drills SET score = json_set(COALESCE(score, '{}'), '$.persons."${person}"', json(?3)) WHERE id = ?1 AND office_id = ?2`)
+    .bind(id, officeId, JSON.stringify(rec))
+    .run();
+}
+
+/** 前の刻みで見た印を書く（1 文で全員分） */
+export async function saveSeen(db: D1Database, officeId: string, id: string, seen: Readonly<Record<string, string>>): Promise<void> {
+  const ids = Object.keys(seen).filter((p) => PERSON_ID.test(p));
+  if (ids.length === 0) return;
+  const paths = ids.map((p, i) => `'$.persons."${p}".seen', ?${i + 3}`).join(", ");
+  await db
+    .prepare(`UPDATE drills SET score = json_set(COALESCE(score, '{}'), ${paths}) WHERE id = ?1 AND office_id = ?2`)
+    .bind(id, officeId, ...ids.map((p) => seen[p]))
+    .run();
 }

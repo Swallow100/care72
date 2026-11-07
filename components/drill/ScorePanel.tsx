@@ -13,18 +13,22 @@ import { shortJst } from "@/lib/disaster/state";
 import type { StoredReview } from "@/lib/drill/record";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
 import { previousText, type ScoreView } from "@/lib/drill/score-view";
+import type { ShownPersons } from "@/lib/drill/person-review";
 import { ReviewBox } from "./ReviewBox";
 
 export function ScorePanel({
   drillId,
   view,
   review,
+  persons,
   canReview,
   names,
 }: {
   drillId: string;
   view: ScoreView;
   review: StoredReview | null;
+  /** 人ごとの講評（T185） */
+  persons?: ShownPersons;
   canReview: boolean;
   names: Readonly<Record<string, string>>;
 }) {
@@ -147,7 +151,7 @@ export function ScorePanel({
         )}
       </section>
 
-      <ReviewBox drillId={drillId} initial={review} canReview={canReview} names={names} />
+      <ReviewBox drillId={drillId} initial={review} persons={persons ?? {}} canReview={canReview} names={names} />
     </div>
   );
 }

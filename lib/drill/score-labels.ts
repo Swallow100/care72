@@ -205,6 +205,29 @@ export const REVIEW_UI = {
   none: "講評なし",
   /** 講評を AI が作れなかった（未設定・上限到達・接続失敗・出力不良。T76）。「講評」の見出しの下に「AI 停止 上限到達」 */
   stopped: `${AI_STATUS_LABELS.ai} ${AI_STATUS_LABELS.stop}`,
+  /** 全体の講評の項目（T185） */
+  topics: "項目別",
+  /** 良かった所（T185） */
+  good: "良い対応",
+  /** 人ごとの講評（T185）と、その中の欄 */
+  persons: "個別講評",
+  personNext: "次回",
+  open: "開く",
+  close: "閉じる",
+  prev: "前",
+  next: "次",
+} as const;
+
+/** 全体の講評の項目の中身の無いとき（T185。AI にこの言葉で返させ、画面はこの項目を出さない） */
+export const REVIEW_SECTION_NONE = "該当なし";
+
+/** 全体の講評の項目の名前（T185、lib/drill/review.ts の REVIEW_TOPICS） */
+export const REVIEW_TOPIC_LABELS = {
+  order: "連絡順",
+  talk: "通話",
+  visit: "訪問手配",
+  report: "報告",
+  clock: "時計",
 } as const;
 
 /** 講評が作れなかった理由（lib/drill/review.ts の ReviewError）。AI の状態の言葉（lib/claude/status.ts）と同じ。T76 */

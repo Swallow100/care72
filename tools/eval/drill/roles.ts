@@ -5,6 +5,7 @@
 import { DIRECTOR_SYSTEM } from "../../../lib/drill/director.ts";
 import { FREE_SYSTEM } from "../../../lib/drill/free-action.ts";
 import { CALL_SYSTEM, PERSONA_BATCH_HEAD, PERSONA_SYSTEM, PERSONA_VIRTUAL, TALK_SYSTEM, VISIT_SYSTEM } from "../../../lib/drill/persona.ts";
+import { PERSON_REVIEW_SYSTEM } from "../../../lib/drill/person-review.ts";
 import { REVIEW_SYSTEM } from "../../../lib/drill/review.ts";
 import { WORLD_SYSTEM } from "../../../lib/drill/world-oneshot.ts";
 import { JUDGE_SYSTEM } from "./judge.ts";
@@ -19,6 +20,8 @@ export const ROLES = [
   "world_room",
   "free",
   "review",
+  // 人ごとの講評（T185。訓練の間に Haiku）
+  "review_person",
   "judge",
   "other",
 ] as const;
@@ -38,6 +41,7 @@ const BY_SYSTEM: ReadonlyArray<readonly [string, Role]> = [
   [WORLD_SYSTEM, "world"],
   [FREE_SYSTEM, "free"],
   [REVIEW_SYSTEM, "review"],
+  [PERSON_REVIEW_SYSTEM, "review_person"],
   [JUDGE_SYSTEM, "judge"],
 ];
 

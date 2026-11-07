@@ -28,6 +28,8 @@ export type Totals = {
   opFailed: number;
   exceptions: number;
   callsPerRun: number | null;
+  /** 人ごとの講評の呼び出し/回（T185） */
+  reviewPersonPerRun?: number | null;
   capRatioMax: number | null;
   dayRatioMax: number | null;
   /** 1 訓練の数えに入らない呼び出し（T118） */
@@ -108,6 +110,7 @@ export function totalsOf(runs: ReadonlyArray<RunSummary>): Totals {
     opFailed: sum(n.map((x) => x.stops.opFailed)),
     exceptions: sum(n.map((x) => x.stops.exceptions)),
     callsPerRun: mean(n.map((x) => x.aiCalls.total)),
+    reviewPersonPerRun: mean(n.map((x) => x.aiCalls.reviewPerson ?? 0)),
     capRatioMax: max(n.map((x) => x.budget.capRatio)),
     dayRatioMax: max(n.map((x) => x.budget.dayRatio)),
     uncounted: sum(n.map((x) => x.budget.uncounted ?? 0)),

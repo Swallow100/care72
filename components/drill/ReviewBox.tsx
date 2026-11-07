@@ -12,14 +12,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AiMark } from "@/components/person/parts";
 import { Button } from "@/components/ui/Button";
-import { CloseIcon, EditIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
+import { BackIcon, CloseIcon, EditIcon, NextIcon, OpenIcon, RetryIcon, SaveIcon } from "@/components/ui/Icon";
 import { Loader72 } from "@/components/ui/Loader72";
 import { LABEL, PanelHead } from "@/components/ui/Panel";
 import { Mark, StateText } from "@/components/ui/Tag";
 import { BASIS_LABEL } from "@/lib/drill/labels";
 import type { StoredReview } from "@/lib/drill/record";
+import type { ShownPersons } from "@/lib/drill/person-review";
 import type { ReviewBody } from "@/lib/drill/review";
-import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI } from "@/lib/drill/score-labels";
+import { REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_SECTION_NONE, REVIEW_TOPIC_LABELS, REVIEW_UI } from "@/lib/drill/score-labels";
 import { checkMark, isSourceId, sourceById } from "@/lib/sources";
 
 type Shown = ReviewBody & { edited: boolean; model: string };
@@ -44,7 +45,7 @@ function viewOf(r: StoredReview | null, canReview: boolean): View {
   return { kind: "done", shown: shownOf(r)! };
 }
 
-type ApiAnswer = { ok: true; review: StoredReview | null } | { ok: false; error?: string; label?: string };
+type ApiAnswer = { ok: true; review: StoredReview | null; persons?: ShownPersons } | { ok: false; error?: string; label?: string };
 
 const POLL_MS = 10_000;
 
@@ -62,15 +63,19 @@ const TEXTAREA =
 export function ReviewBox({
   drillId,
   initial,
+  persons: initialPersons = {},
   canReview,
   names,
 }: {
   drillId: string;
   initial: StoredReview | null;
+  /** 人ごとの講評（T185。訓練の間に作った物と、終わりに作った物） */
+  persons?: ShownPersons;
   canReview: boolean;
   names: Readonly<Record<string, string>>;
 }) {
   const [view, setView] = useState<View>(() => viewOf(initial, canReview));
+  const [persons, setPersons] = useState<ShownPersons>(initialPersons);
   const [editing, setEditing] = useState<{ summary: string; findings: string[] } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -112,6 +117,7 @@ export function ReviewBox({
       const ai = a.error !== undefined && Object.hasOwn(REVIEW_ERROR_LABELS, a.error);
       return setView({ kind: "failed", reason: ai ? REVIEW_ERROR_LABELS[a.error as keyof typeof REVIEW_ERROR_LABELS] : (a.label ?? REVIEW_UI.failed), ai });
     }
+    if (a.persons) setPersons(a.persons);
     setView(viewOf(a.review, true));
   }, [post]);
 
@@ -193,6 +199,8 @@ export function ReviewBox({
         </p>
       )}
       {view.kind === "done" && !editing && <ReviewText shown={view.shown} names={names} />}
+      {/* 人ごとの講評（T185）は全体の講評ができる前でも出す（訓練の間に作った物）。直す欄は無い */}
+      {!editing && <PersonReviews persons={persons} names={names} />}
       {view.kind === "done" && editing && (
         <div className="space-y-2" data-review-form>
           <label className="block">
@@ -233,8 +241,9 @@ export function ReviewBox({
   );
 }
 
-/** 講評の文（総評と指摘）。根拠は登録簿の物だけ */
+/** 講評の文（総評・良い対応・項目別・指摘）。根拠は登録簿の物だけ。良い対応と項目別は T185 から（前の講評には無い） */
 export function ReviewText({ shown, names }: { shown: ReviewBody; names: Readonly<Record<string, string>> }) {
+  const sections = (shown.sections ?? []).filter((s) => s.text !== REVIEW_SECTION_NONE);
   return (
     <div className="space-y-1.5 text-sm">
       {shown.summary && (
@@ -242,6 +251,32 @@ export function ReviewText({ shown, names }: { shown: ReviewBody; names: Readonl
           {shown.summary}
         </p>
       )}
+      {shown.good && shown.good.length > 0 && (
+        <div data-review-good>
+          <h4 className={LABEL}>{REVIEW_UI.good}</h4>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-5 leading-6">
+            {shown.good.map((g, i) => (
+              <li key={i}>{g}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {sections.length > 0 && (
+        <div data-review-topics>
+          <h4 className={LABEL}>{REVIEW_UI.topics}</h4>
+          <dl className="mt-0.5 space-y-1">
+            {sections.map((s) => (
+              <div key={s.topic} className="rounded bg-panel2 px-2 py-1.5" data-topic={s.topic}>
+                <dt>
+                  <Mark inPanel2>{REVIEW_TOPIC_LABELS[s.topic]}</Mark>
+                </dt>
+                <dd className="mt-0.5 leading-6">{s.text}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+      {shown.findings.length > 0 && sections.length > 0 && <h4 className={LABEL}>{REVIEW_UI.findings}</h4>}
       {shown.findings.length > 0 && (
         <ul className="space-y-1">
           {shown.findings.map((f, i) => (
@@ -271,5 +306,80 @@ function Basis({ id }: { id: string }) {
       </a>
       {mark === "未確認" && <StateText tone="check">{mark}</StateText>}
     </p>
+  );
+}
+
+/**
+ * 人ごとの講評（T185）。参加者の並び（names の順）に 1 人 1 行、名前で開く。開いた人は講評・良い対応・次回と、前へ・次へで送る。
+ * AI の印（Haiku が作った下書き）
+ */
+export function PersonReviews({ persons, names }: { persons: ShownPersons; names: Readonly<Record<string, string>> }) {
+  const order = [...Object.keys(names).filter((p) => persons[p]), ...Object.keys(persons).filter((p) => !(p in names))];
+  const [open, setOpen] = useState<string | null>(null);
+  if (order.length === 0) return null;
+  const at = open ? order.indexOf(open) : -1;
+  return (
+    <section className="space-y-1 text-sm" data-review-persons aria-label={REVIEW_UI.persons}>
+      <h4 className={`${LABEL} flex items-center gap-1.5`}>
+        {REVIEW_UI.persons}
+        <AiMark title="AI（Haiku）が訓練の間に作った人ごとの講評。数字は機械の数え" />
+      </h4>
+      <ul className="space-y-1">
+        {order.map((p) => {
+          const r = persons[p];
+          const isOpen = open === p;
+          return (
+            <li key={p} className="rounded bg-panel2 px-2 py-1" data-review-person={p}>
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 font-bold">{names[p] ?? p}</span>
+                {!isOpen && <span className="min-w-0 flex-1 truncate text-muted">{r.text || r.good[0] || r.next[0]}</span>}
+                {isOpen && <span className="flex-1" />}
+                <Button
+                  kind="plain"
+                  size="sm"
+                  icon={OpenIcon}
+                  aria-expanded={isOpen}
+                  onClick={() => setOpen(isOpen ? null : p)}
+                  className={isOpen ? "[&>svg]:rotate-180" : ""}
+                  data-review-person-open
+                >
+                  {isOpen ? REVIEW_UI.close : REVIEW_UI.open}
+                </Button>
+              </div>
+              {isOpen && (
+                <div className="mt-1 space-y-1 pb-1 leading-6">
+                  {r.text && <p>{r.text}</p>}
+                  {r.good.length > 0 && <PersonItems label={REVIEW_UI.good} items={r.good} />}
+                  {r.next.length > 0 && <PersonItems label={REVIEW_UI.personNext} items={r.next} />}
+                  {order.length > 1 && (
+                    <div className="flex gap-2">
+                      <Button kind="quiet" size="sm" icon={BackIcon} disabled={at <= 0} onClick={() => setOpen(order[at - 1])} data-review-person-prev>
+                        {REVIEW_UI.prev}
+                      </Button>
+                      <Button kind="quiet" size="sm" icon={NextIcon} disabled={at >= order.length - 1} onClick={() => setOpen(order[at + 1])} data-review-person-next>
+                        {REVIEW_UI.next}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function PersonItems({ label, items }: { label: string; items: ReadonlyArray<string> }) {
+  return (
+    <div>
+      <span className={LABEL}>{label}</span>
+      <ul className="list-disc pl-5">
+        {items.map((x, i) => (
+          <li key={i}>{x}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

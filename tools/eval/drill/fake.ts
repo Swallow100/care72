@@ -9,7 +9,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ClaudeClient } from "../../../lib/claude/client.ts";
 import { DIRECTOR_SOURCES, DIRECTOR_SYSTEM } from "../../../lib/drill/director.ts";
-import { REVIEW_ACTION_LABELS, REVIEW_KINDS } from "../../../lib/drill/review.ts";
+import { REVIEW_ACTION_LABELS, REVIEW_KINDS, REVIEW_TOPICS } from "../../../lib/drill/review.ts";
 import { ASK_KINDS } from "../../../lib/drill/scenarios.ts";
 import { WORLD_TOOL, type RoomClient, type RoomEvent } from "../../../lib/drill/world-room.ts";
 import { NO_BASIS } from "../../../lib/sources/prompt.ts";
@@ -48,6 +48,8 @@ export const LATENCY_MS: Readonly<Partial<Record<Role | "persona_batch" | "world
   free: 2600,
   judge: 15000,
   review: 15000,
+  // 人ごとの講評（T185。Haiku・medium・1 人分の短い返事の目安）
+  review_person: 5000,
 };
 
 const pause = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
@@ -517,6 +519,22 @@ function reviewAnswer(rng: Rng, input: Input) {
       text: `${rng.pick(REVIEW_ACTION_LABELS)}を先に打つと、届くのが早くなった。`,
       basis: NO_BASIS,
     })),
+    // 項目ごとの文と良かった所（T185）
+    sections: REVIEW_TOPICS.map((topic) => ({ topic, text: `${rng.pick(REVIEW_ACTION_LABELS)}を早めに打てた。次は${rng.pick(REVIEW_ACTION_LABELS)}も試す。` })),
+    good: [`${rng.pick(REVIEW_ACTION_LABELS)}を早めに打てた。`],
+  };
+}
+
+/** 人ごとの講評（T185）の偽の返事。入力の「## 仮名」の節ごとに 1 人分、手の名前だけで書く */
+function personReviewAnswer(rng: Rng, input: Input) {
+  const people = [...textOf(input["記録"]).matchAll(/^## (.+)$/gm)].map((m) => m[1].trim());
+  return {
+    persons: people.map((person) => ({
+      person,
+      text: `本人へ${rng.pick(REVIEW_ACTION_LABELS)}を打ち、結果を確かめた。次は${rng.pick(REVIEW_ACTION_LABELS)}を早めに試す。`,
+      good: rng.chance(0.7) ? [`${rng.pick(REVIEW_ACTION_LABELS)}を早めに打てた。`] : [],
+      next: [`${rng.pick(REVIEW_ACTION_LABELS)}を先に試す。`],
+    })),
   };
 }
 
@@ -568,6 +586,7 @@ export function fakeClaude(opts: FakeOptions): ClaudeClient & { roles: Role[] } 
             value = worldAnswer(rng, text, geo, opts);
           } else if (role === "free") value = freeAnswer(rng, input);
           else if (role === "review") value = reviewAnswer(rng, input);
+          else if (role === "review_person") value = personReviewAnswer(rng, input);
           else if (role === "judge") value = judgeAnswer(rng);
           else value = emptyOf((params.output_config as { format?: { schema?: unknown } } | undefined)?.format?.schema);
           return message(params, JSON.stringify(value));

@@ -886,7 +886,8 @@ export type RunNumbers = {
   acts: number;
   banned: { raw: number; shown: number; otherRaw: number; byRule: Record<string, number> };
   shape: { failed: number; notJson: number; retries: number; byError: Record<string, number> };
-  aiCalls: { total: number; byPurpose: Record<string, number>; failed: number; byError: Record<string, number> };
+  /** reviewPerson: 人ごとの講評（T185。用途 scoring の Haiku）。T185 より前の記録には無い */
+  aiCalls: { total: number; byPurpose: Record<string, number>; failed: number; byError: Record<string, number>; reviewPerson?: number };
   /**
    * 1 訓練の数え（world.counts の合計）と上限 150 との比、1 日の上限 200 との比（ai_calls の数）。
    * uncounted は訓練の AI の呼び出し（ai_calls の講評・声のほか）のうち 1 訓練の数えに入っていない数（連続の時計の訓練だけ。T118）
@@ -1064,6 +1065,7 @@ export function checkRun(records: ReadonlyArray<LogRecord>, outcome: RunOutcome,
       byPurpose: tally(outcome.aiCalls.map((c) => c.purpose)),
       failed: outcome.aiCalls.filter((c) => c.status !== "ok").length,
       byError: tally(outcome.aiCalls.filter((c) => c.error).map((c) => c.error!)),
+      reviewPerson: outcome.aiCalls.filter((c) => c.purpose === "scoring" && c.model.includes("haiku")).length,
     },
     budget: { drillCounted, capRatio: drillCounted / DRILL_CAP, dayRatio: outcome.aiCalls.length / DAY_LIMIT, uncounted },
     leaks: leaks.length,

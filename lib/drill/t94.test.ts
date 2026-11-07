@@ -619,10 +619,12 @@ describe("保存と講評と紙面（D1）", () => {
     const f = fake(answer);
     const res = await reviewPost({ DB: db, ANTHROPIC_API_KEY: "dummy" }, careManager(), ID, {}, { claude: f.client, now: () => new Date(LATER) });
     expect(res.status).toBe(200);
-    expect(f.calls).toHaveLength(1);
-    const sys = systemOf(f.calls[0]);
+    // 全体の講評（Opus）は 1 回。人ごとの講評（T185、Haiku）は並べて呼ぶ
+    const whole = f.calls.filter((p) => p.model === OPUS);
+    expect(whole).toHaveLength(1);
+    const sys = systemOf(whole[0]);
     for (const l of REVIEW_ACTION_LABELS) expect(sys).toContain(l);
-    const sent = JSON.stringify(f.calls[0].messages);
+    const sent = JSON.stringify(whole[0].messages);
     expect(sent).toContain("［事実: ");
     expect(sent).toContain("道 通行止");
     expect(sent).toContain("空振り");
