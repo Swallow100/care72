@@ -130,6 +130,15 @@ const rowFixesWhere = (ctx: ScreenContext, person: string): boolean =>
 /** その人のいる所を変える印（家の外へ出た・車中泊）。表の行がこのあといる所を決める人には、AI が先に付けない（T123） */
 const WHERE_MARKS: ReadonlySet<keyof PersonMarks> = new Set<keyof PersonMarks>(["wandering", "carSleep"]);
 
+/** その人のいる所を変える出来事か（家の外へ出た・車中泊・家へ帰ろうとする。T178） */
+export const changesWhere = (c: WorldChange): boolean => c.kind === "going_home" || (c.kind === "mark" && WHERE_MARKS.has(c.mark));
+
+/**
+ * 区切りの終わりに当たる監督の出来事のうち、同じ時刻に本人の連絡がある人の、いる所を変える物を次へ回す分（T178）。評価の 11 回目で、同じ時刻に行方不明の出来事と
+ * 「家にいます」の連絡が並んだ。監督は本人役と並べて呼ぶので、本人役は出来事を知らない。回した出来事は次の区切りで本人役の文に入る
+ */
+export const SAME_CUT_HOLD_MINUTES = 60;
+
 export type ScreenContext = {
   /** 今の時刻（発災からの分）。出来事の起きる時刻（区切りの終わり） */
   minute: number;

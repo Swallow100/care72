@@ -88,16 +88,16 @@ export function formatCell(item: Item, c: Cell | undefined): string {
 }
 
 /** しきい値と守り（項目の threshold と GUARDS） */
-export function limitsOf(item: Item, guards: ReadonlyArray<Guard> = GUARDS): Array<{ op: Guard["op"]; value: number; from: string }> {
-  return [...(item.threshold ? [{ ...item.threshold, from: "しきい値" }] : []), ...guardsOn(item.id, guards).map((g) => ({ op: g.op, value: g.value, from: `守り ${g.id}` }))];
+export function limitsOf(item: Item, guards: ReadonlyArray<Guard> = GUARDS, client?: RunClient): Array<{ op: Guard["op"]; value: number; from: string }> {
+  return [...(item.threshold ? [{ ...item.threshold, from: "しきい値" }] : []), ...guardsOn(item.id, guards, client).map((g) => ({ op: g.op, value: g.value, from: `守り ${g.id}` }))];
 }
 
 /** 印（前の回より悪い・しきい値の外） */
-export function marksOf(item: Item, prev: Cell | undefined, cur: Cell | undefined, guards: ReadonlyArray<Guard> = GUARDS): { worse: boolean; outside: boolean } {
+export function marksOf(item: Item, prev: Cell | undefined, cur: Cell | undefined, guards: ReadonlyArray<Guard> = GUARDS, client?: RunClient): { worse: boolean; outside: boolean } {
   const v = cur?.value ?? null;
   const p = prev?.value ?? null;
   const worse = v !== null && p !== null && item.better !== null && (item.better === "higher" ? v < p - 1e-9 : v > p + 1e-9);
-  const outside = v !== null && limitsOf(item, guards).some((l) => !meets(v, l.op, l.value));
+  const outside = v !== null && limitsOf(item, guards, client).some((l) => !meets(v, l.op, l.value));
   return { worse, outside };
 }
 
@@ -140,7 +140,7 @@ export function scorecardMarkdown(columns: ReadonlyArray<Column>, opts: { extra?
       let prev: Cell | undefined;
       const cells = columns.map((c) => {
         const cur = c.cells[item.id];
-        const { worse, outside } = marksOf(item, prev, cur, guards);
+        const { worse, outside } = marksOf(item, prev, cur, guards, c.sources.find((x) => x.bench === item.bench)?.client);
         if (cur && cur.value !== null) prev = cur;
         return `${formatCell(item, cur)}${worse ? "（悪）" : ""}${outside ? "（外）" : ""}`;
       });

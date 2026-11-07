@@ -53,6 +53,7 @@ import {
   GATHER_MINUTES,
   QUIET_REASONS,
   ROUND_QUIET_MINUTES,
+  seatRounds,
   capReached,
   CLOCK_LABELS,
   crossedClocks,
@@ -64,6 +65,7 @@ import {
   PERSONA_BATCH_MAX,
   PERSONA_PER_CUT,
   REASON_ORDER,
+  ROUND_HOLD_MINUTES,
   ROUND_MINUTES,
   ROUND_PER_CUT,
   softReached,
@@ -73,7 +75,7 @@ import {
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
 import { lostFollowUps } from "./lost.ts";
-import { screenIncidents, tableAheadOf } from "./state-rules.ts";
+import { changesWhere, SAME_CUT_HOLD_MINUTES, screenIncidents, tableAheadOf } from "./state-rules.ts";
 import { fitKindOf, profileOf, type FitProfile } from "./fit.ts";
 import { gateTurns, tallyGate } from "./gate.ts";
 import { routeTurns } from "./comms.ts";
@@ -83,7 +85,8 @@ import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
-import { addGated, carryPlace, carryPromises, dropRoadSlips, noteIssued, type GateLog } from "./person-facts.ts";
+import { addGated, carryMoved,
+  carryPlace, carryPromises, dropRoadSlips, noteIssued, type GateLog } from "./person-facts.ts";
 import { startHourOf } from "./night.ts";
 
 const HOUR_MS = 3_600_000;
@@ -345,6 +348,8 @@ function personStateOf(t: DrillTurn, prev: PersonState | null = null): PersonSta
   const known = t.color === "red" && t.atHome === false ? carryPlace(prev, t) : null;
   // 言って済んでいない予定（T165。門で落とした同じ予定の言い直しは言葉に無いので、前の様子から引き継ぐ）
   const promised = carryPromises(prev, t);
+  // 移った事の記録（T177）。門を通った安否と世界の到着だけが記録になる
+  const moved = carryMoved(prev, t);
   return {
     color: t.color,
     source: t.source,
@@ -358,6 +363,7 @@ function personStateOf(t: DrillTurn, prev: PersonState | null = null): PersonSta
     hasMedicine: t.hasMedicine,
     ...(known === "shelter" ? { placeKnown: known } : {}),
     ...(promised.length > 0 ? { promised } : {}),
+    ...(moved ? { moved } : {}),
   };
 }
 
@@ -1028,6 +1034,16 @@ export async function advance(
         }
       }
     }
+    // 巡回だけの人は呼び出しの空きに相乗り（T177）。待ちすぎたら自分で開く。呼び出しの数が減り、呼ぶ人は次の区切りへ残る
+    if (hooks.personas) {
+      const isRound = (p: string) => [...reasons.get(p)!].every((r) => r === "round");
+      const overdue = (p: string) => {
+        const gap = to - (lastCalled[p] ?? 0);
+        return gap >= ROUND_QUIET_MINUTES + ROUND_HOLD_MINUTES || (gap >= ROUND_MINUTES + ROUND_HOLD_MINUTES && changedSince(world, p, lastCalled[p] ?? 0));
+      };
+      const seated = new Set(seatRounds([...order].sort((a, b) => (lastCalled[a] ?? 0) - (lastCalled[b] ?? 0)), isRound, overdue, PERSONA_BATCH_MAX, PERSONA_PER_CUT));
+      for (const p of [...order]) if (!seated.has(p)) order.splice(order.indexOf(p), 1);
+    }
     order.sort((a, b) => rank(a) - rank(b) || (touched[a] ?? to) - (touched[b] ?? to) || live.indexOf(a) - live.indexOf(b));
     const room = Math.max(0, Math.min(PERSONA_PER_CUT, DRILL_CALL_CAP - totalCalls(counts)));
     const called = order.slice(0, room);
@@ -1069,9 +1085,22 @@ export async function advance(
 
   // 監督の差し込み（並べて呼んだ物）を区切りの終わりに当てる。指す人は次の区切りで本人役を呼ぶ（T121）
   if (directorP) {
-    const late = screenIncidents(world, await directorP, { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
+    const lateRaw = await directorP;
+    // 同じ時刻に本人の連絡がある人の、いる所を変える出来事は次の区切りへ（T178。本人役は知らないまま「家にいます」と話している）。決まりは今の世界で見る
+    const heldRaw = lateRaw.filter((e) => e.person && changesWhere(e.change) && turns.some((t) => t.person === e.person && Math.round(t.at * 60) >= to));
+    const held = screenIncidents(world, heldRaw, { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
+    const late = screenIncidents(world, lateRaw.filter((e) => !heldRaw.includes(e)), { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
     world = late.world;
-    book = tallyGate(book, "director", late.ruled.map((r) => r.rule));
+    book = tallyGate(book, "director", [...late.ruled, ...held.ruled].map((r) => r.rule));
+    if (held.kept.length > 0) {
+      book = {
+        ...book,
+        scheduled: [
+          ...(book.scheduled ?? []),
+          ...held.kept.map((e) => ({ at: to + SAME_CUT_HOLD_MINUTES, change: e.change, text: e.text, by: "director" as const, ai: e.ai, ...(e.person ? { person: e.person } : {}), ...(e.inject ? { inject: e.inject } : {}) })),
+        ],
+      };
+    }
     incidents = [...incidents, ...late.kept];
     if (hooks.persona && !capped) {
       for (const e of late.kept) for (const p of incidentPersons(e)) if (members.has(p) && !world.ended?.[p]) touched[p] = Math.min(touched[p] ?? to, to);

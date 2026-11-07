@@ -84,7 +84,7 @@ import { officePlaces } from "./area.ts";
 import { arrivalRoleWords, extraWorldWords } from "./event-catalog.ts";
 import type { ActionRecord, DrillIncident, DrillTurn, HeardSignal, PersonaBatchHook, PersonaHook, PersonaInput, PersonState, StopLog } from "./engine.ts";
 import { CALL_STATUS_TEXTS, clockLabel, PHONE_LABELS, SHELTER_LABELS, TSUNAMI_LABELS, WATER_LABELS } from "./labels.ts";
-import { nightLine, timeLines } from "./night.ts";
+import { clockStartOf, clockWhen, timeLines } from "./night.ts";
 import { ASK_KINDS, eventHour, type AskKind, type DrillKind, type FixedTurn, type OutageArea, type PhoneState, type WorldState } from "./scenarios.ts";
 import { fitLedgerHazards, profileOf } from "./fit.ts";
 import { homeComms, homeOf, type Home } from "./comms.ts";
@@ -101,9 +101,14 @@ import {
   placeOfState,
   planOf,
   downSaying,
+  farDownSaying,
   phoneAnswerer,
   screenAsks,
+  planMoveOf,
   screenTurn,
+  startsMove,
+  talkContextOf,
+  whenWordsOf,
   slipContextOf,
   stuckDown,
   type Facts,
@@ -320,7 +325,7 @@ export function buildPersona(source: PseudonymInput, opts: { on?: string; places
 /** 本人役の帳面（T130）。actions はこの人への手（メモを落とした物）。停電の地区は本人の町名とハザードで見る */
 export function personaFacts(
   persona: Pick<Persona, "plan" | "together" | "kin" | "hazards" | "town" | "mask">,
-  x: { person: string; world: WorldState; state: PersonState | null; actions?: ReadonlyArray<ActionRecord>; now: number; ahead?: PersonaInput["ahead"] },
+  x: { person: string; world: WorldState; state: PersonState | null; actions?: ReadonlyArray<ActionRecord>; now: number; ahead?: PersonaInput["ahead"]; night?: boolean | undefined; startHour?: number | undefined },
 ): Facts {
   const o = x.world.outage;
   return factsOf({
@@ -334,6 +339,7 @@ export function personaFacts(
     together: persona.together ?? [],
     kin: persona.kin ?? null,
     ahead: x.ahead ?? null,
+    startHour: clockStartOf(x),
     ...(persona.mask ? { mask: persona.mask } : {}),
   });
 }
@@ -389,11 +395,11 @@ function fixedWords(f: FixedTurn): string {
   return `- ${parts.join("。")}`;
 }
 
-function stateWords(s: PersonState | null): string {
+function stateWords(s: PersonState | null, at?: (minute: number) => string): string {
   if (!s) return "まだケアマネに連絡していない";
   const where = s.whereNow ? `（${WHERE_WORDS[s.whereNow]}）` : "";
   return [
-    `${s.at} 時間に${SOURCE_WORDS[s.source]}が${COLOR_WORDS[s.color]}${where}`,
+    `${at ? at(Math.round(s.at * 60)) : `${s.at} 時間`}に${SOURCE_WORDS[s.source]}が${COLOR_WORDS[s.color]}${where}`,
     s.saying ? `「${s.saying}」` : null,
     s.doing ? `する事 ${s.doing}` : null,
   ]
@@ -512,7 +518,7 @@ const SUPPLY_CLOCKS: Readonly<Record<string, ReadonlyArray<string>>> = { oxygen:
  * 持ちこたえる時間の今（T121。本人役が「電池は 3 時間」と言い続けて食い違わないように、コードが計算した残りを渡す）。
  * 停電で減る時計は、停電の始まりから、停電の復旧か電源が届いた時刻まで。物が届いた時計はその時刻を添える。色と順には使わない
  */
-export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">, world: WorldState, person: string, now: number): string[] {
+export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">, world: WorldState, person: string, now: number, when: (minute: number) => string = minuteText): string[] {
   const clocks = (persona.clocks ?? []).filter((k) => k.kind !== "condition" && k.startsOn !== "none");
   if (clocks.length === 0) return [];
   const o = world.outage;
@@ -524,7 +530,7 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
   return clocks.map((k) => {
     // 栄養剤を家に置いてきた（T158）。手元に無いので、台帳の時間で減る残りを言わない（評価の 6 回目で、置いてきたのに残りが減り続けた）
     if (k.category === "tube_feeding" && typeof left === "number" && Math.round(left * 60) <= now) {
-      return `${k.label}: 家に置いてきて手元に無い（${minuteText(Math.round(left * 60))}から）。届くか家から持ってくるまで使えない。残りの時間は言わない`;
+      return `${k.label}: 家に置いてきて手元に無い（${when(Math.round(left * 60))}から）。届くか家から持ってくるまで使えない。残りの時間は言わない`;
     }
     if (k.value == null || k.unit == null) return `${k.label}: 残り 未確認`;
     const end = k.startsOn === "outage" && stop !== null ? Math.min(now, stop) : now;
@@ -534,16 +540,16 @@ export function clockWords(persona: Pick<Persona, "clocks" | "hazards" | "town">
     if (!r) return `${k.label}: 残り 未確認`;
     const got = Object.entries(SUPPLY_CLOCKS).flatMap(([supply, cats]) => {
       const at = world.supplies?.[person]?.[supply as "oxygen" | "medicine"];
-      return typeof at === "number" && at <= now && cats.includes(k.category) ? [`。${minuteText(at)}に届いた`] : [];
+      return typeof at === "number" && at <= now && cats.includes(k.category) ? [`。${when(at)}に届いた`] : [];
     });
     // 電源が届いた家は停電が戻ったのではない（T167）
     // 動くのは機器だけ（予備のボンベなどは「減っていない」だけ）
     const stopped =
       k.startsOn === "outage" && stop !== null && stop <= now
-        ? `。${minuteText(stop)}から${k.kind === "device" ? `${typeof power === "number" && power === stop ? "届いた電源" : "電気"}で動き` : ""}減っていない`
+        ? `。${when(stop)}から${k.kind === "device" ? `${typeof power === "number" && power === stop ? "届いた電源" : "電気"}で動き` : ""}減っていない`
         : "";
     if (!r.running) return `${k.label}: ${formatHours(r.hours)}（停電で減る。まだ減っていない）${got.join("")}`;
-    if (r.over) return `${k.label}: ${formatHours(r.hours)}の分は切れた（${minuteText(Math.round(r.hours * 60) + (k.startsOn === "outage" && o ? Math.round(o.since * 60) : 0))}ごろ）${stopped}${got.join("")}`;
+    if (r.over) return `${k.label}: ${formatHours(r.hours)}の分は切れた（${when(Math.round(r.hours * 60) + (k.startsOn === "outage" && o ? Math.round(o.since * 60) : 0))}${when === minuteText ? "ごろ" : ""}）${stopped}${got.join("")}`;
     return `${k.label}: 残り ${formatHours(r.remaining)}${stopped}${got.join("")}`;
   });
 }
@@ -604,9 +610,16 @@ function worldWords(world: WorldState, person: string, persona: Persona, now: nu
   return out;
 }
 
+/** 今の様子の「（N 時間 M 分から）」を時計の言い方に（T177。今の様子の行はどれも括弧の中が変わった時刻で、残りの長さは書かない）。時計が分からなければそのまま */
+const AT_PAREN = /（(\d+(?:\.\d+)?) 時間(?: (\d+) 分)?(から)?）/gu;
+function clockedWorld(lines: ReadonlyArray<string>, startHour: number | null, now: number): string[] {
+  if (startHour === null) return [...lines];
+  return lines.map((l) => l.replace(AT_PAREN, (_, h: string, m: string | undefined, from: string | undefined) => `（${clockWhen(Number(h) * 60 + Number(m ?? 0), startHour, now)}${from ?? ""}）`));
+}
+
 /** 持ちこたえる時間の今の段（時計が無ければ空） */
-function clockLines(persona: Persona, world: WorldState, person: string, now: number): string[] {
-  const xs = clockWords(persona, world, person, now);
+function clockLines(persona: Persona, world: WorldState, person: string, now: number, when?: (minute: number) => string): string[] {
+  const xs = clockWords(persona, world, person, now, when);
   return xs.length > 0 ? [["持ちこたえる時間の今（計算した値。言葉はこれと食い違わない）:", ...xs.map((x) => `- ${x}`)].join("\n")] : [];
 }
 
@@ -620,11 +633,32 @@ function ownIncidents(incidents: ReadonlyArray<DrillIncident>, person: string): 
  * 切れた知らせが緑で届いた）。表の言う事の元も使わない（まだ動いている前提の文なので）。ほかの行は表のまま。どちらもコードの決めで、AI は決めない
  */
 function rowsFor(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
-  if (!stuckDown(facts)) return [...fixed];
-  return fixed.map((f): FixedTurn => {
+  const rows = awayRows(fixed, facts);
+  if (!stuckDown(facts)) return rows;
+  return rows.map((f): FixedTurn => {
     if (f.color !== "green") return f;
     const { whereNow, saying: _saying, ...rest } = f;
     return { ...rest, color: "red", ...(whereNow === "home" ? { atHome: true } : {}) };
+  });
+}
+
+/**
+ * 移った記録のある人の表の行の「家」を移った先に（T177。評価の 10 回目で、移送の車で移った人に、表の 24 時間の行が家と言った）。表の行は移す手を知らない骨なので、いる所は記録を優先する。
+ * 文は家にいる前提なので使わない。行き先の分からない人（wandering）は見ない
+ */
+function awayRows(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
+  const p = facts.place;
+  if (!p || p.where === "home" || p.by === "wandering" || p.loose) return [...fixed];
+  return fixed.map((f): FixedTurn => {
+    if (f.color === "green" && f.whereNow === "home") {
+      const { saying: _saying, ...rest } = f;
+      return { ...rest, whereNow: p.where };
+    }
+    if (f.color === "red" && f.atHome === true) {
+      const { saying: _saying, ...rest } = f;
+      return { ...rest, atHome: false };
+    }
+    return f;
   });
 }
 
@@ -633,8 +667,10 @@ export function tickText(input: PersonaInput, persona: Persona): string {
   const incidents = ownIncidents(input.incidents, input.person);
   const now = nowMinuteOf(input);
   const acts = actionsSince(input);
-  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now });
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now, night: input.night, startHour: input.startHour });
   const reason = reasonLine(input, incidents, acts, now, stuckDown(facts) && facts.devices.some((d) => d.down && d.known === true));
+  const start = clockStartOf(input);
+  const when = start === null ? undefined : whenWordsOf(facts);
   const rows = rowsFor(input.fixed, facts);
   return [
     // 発災からの「N 時間 M 分」（連続の時計の時刻は小数になるので分まで。T93）
@@ -643,12 +679,12 @@ export function tickText(input: PersonaInput, persona: Persona): string {
     ...timeLines(input.hour, input),
     ...(reason ? [reason] : []),
     incidents.length > 0 ? ["この刻みの状況:", ...incidents.map((e) => `- ${e.text}`)].join("\n") : "この刻みの状況: 新しい事はない",
-    ["今の様子:", ...[...worldWords(input.world, input.person, persona, now), ...advisedWords(input.world, input.person)].map((x) => `- ${x}`)].join("\n"),
+    ["今の様子:", ...clockedWorld([...worldWords(input.world, input.person, persona, now), ...advisedWords(input.world, input.person)], start, now).map((x) => `- ${x}`)].join("\n"),
     // T121: 持ちこたえる時間の今（コードの計算）。言葉はこれと食い違わない
-    ...clockLines(persona, input.world, input.person, now),
+    ...clockLines(persona, input.world, input.person, now, when),
     // T130: 人ごとの事実の帳面と計画（コードが引く。いる所・前に言った事・来た人・声・同居・電気と予備）
     factsBlock(facts),
-    `前の連絡: ${stateWords(input.state)}`,
+    `前の連絡: ${stateWords(input.state, when)}`,
     acts.length > 0 ? ["ケアマネがした事:", ...acts.map((a) => `- ${actionWords(a, persona)}`)].join("\n") : "ケアマネがした事: なし",
     rows.length > 0
       ? ["想定の表のこの刻みの行（この通りに連絡する）:", ...rows.map(fixedWords)].join("\n")
@@ -691,8 +727,8 @@ export const PERSONA_SYSTEM = [
   "7. 「診断」「判定」「重症」と言わない。病名を言い切らない。薬の量を言わない。助言をしない。",
   "8. ケアマネの手が届いたあとの最初の連絡は、その手の結果を受けた様子を言う（来た人がいる・物が届いた・移った）。頼んだ事が済んでいなければ、また頼んでよい。",
   "9. 119 を勧められたら、かけるか・かけないかを言葉で言う（かけたかどうかは自分で決める）。救急が来た先の事は言わない。「死亡」と言わない。",
-  "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。",
-  "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える・決めた避難先へ移る）。計画に無い事で、手も人も無いのに良くならない。",
+  "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。時刻を言う時は、ここに書いた時計の時刻か「N 時間前」で言う。発災からの時間の数を時刻として言わない。",
+  "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える。避難先へ移るのは「移動」の行が移れると書いている時だけ）。計画に無い事で、手も人も無いのに良くならない。いる所が変わるのはコードの記録だけで、言葉では移らない。",
   "12. 「ケアマネに言われた事」は覚えて従う（待つと言われたら待つ・119 を勧められたらかけるか決める）。従えない時は理由を言う（道が通れない・動けない など）。",
   "13. 「前の連絡」で言った文・言い回しをくり返さない。変わった事を先に言い、変わらない事は言わないか「〜のまま」と短く。前に伝えた事（着いた・切れた・置いてきた）を新しい事のように言わない。",
 ].join("\n");
@@ -878,7 +914,7 @@ export function fixedTurns(input: Pick<PersonaInput, "fixed" | "hour">): DrillTu
  */
 export function personaTurns(input: PersonaInput, persona: Persona, answer: PersonaAnswer, onDrop?: (rule: GateRule) => void): DrillTurn[] {
   // T130: 帳面（前の連絡・手・到着・台帳の計画から引く）。帳面と食い違う文を落とし、表の行の無い答えは帳面の門を通す
-  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now: nowMinuteOf(input), ahead: input.ahead ?? null });
+  const facts = personaFacts(persona, { person: input.person, world: input.world, state: input.state, actions: input.actions ?? [], now: nowMinuteOf(input), ahead: input.ahead ?? null, night: input.night, startHour: input.startHour });
   // 家族の話し手は自分の家族のことも話すので、いない家族の確かめは本人と支援者の言葉だけ
   const slipCtx = (source: FixedTurn["source"], place: WhereNow | null) => ({ ...slipContextOf(facts, place), ...(source === "family" ? { kin: null } : {}) });
   const factText = (raw: string | null, source: FixedTurn["source"], place: WhereNow | null): string | null => {
@@ -901,6 +937,8 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
     const rowPlace = placeOfState({ color: lastRow.color, whereNow: lastRow.whereNow ?? null, atHome: lastRow.atHome ?? null }) ?? facts.place?.where ?? null;
     const speech = factText(speechBy(lastRow.source), lastRow.source, rowPlace);
     const doingOk = factText(doing, lastRow.source, rowPlace);
+    // 表の行のいる所が家の人の「これから移ります」は計画の手段の記録に（T177）
+    const go = rowPlace === "home" && startsMove(facts, [speech, doingOk]) ? { move: planMoveOf(facts) } : {};
     return fixed.map((f, i) => {
       const last = i === fixed.length - 1;
       const aiSaying = last ? speech : null;
@@ -911,6 +949,7 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
         saying: aiSaying ?? f.saying ?? (last && stuckDown(facts) ? downSaying(input.state?.saying, nowMinuteOf(input)) : null),
         doing: f.doing ?? aiDoing,
         ai: aiSaying !== null || aiDoing !== null,
+        ...(last ? go : {}),
       };
     });
   }
@@ -924,6 +963,29 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const named = answer.contactsCaremanager ? persona.reporters.find((r) => r.role === from && r.canPress) : undefined;
   if (!named && !mustTell) return [];
   const reporter = named ?? presser!;
+  // 家の電波が不通の間、本人のボタンは届かない（lib/drill/comms.ts の viaOf）。離れた家族がいれば、つながらない事をコードの言葉で伝える（T178。評価の 11 回目で、
+  // 一人暮らしの人の連絡が基地局の停止から復旧まで全部届かず、30 時間以上の無連絡になった）。呼び出しは増えない。色の入力は止まったままの赤（T174）
+  if (stuck && reporter.source === "agent" && persona.home && input.world.radio !== "down" && homeComms(input.world, profileOf(persona.fit ?? null), input.person, persona.home, nowMinuteOf(input)).mobile === "down") {
+    const far = persona.reporters.find((r) => r.canPress && r.source !== "agent" && !(persona.together ?? []).includes(r.role));
+    if (far) {
+      return [
+        {
+          person: input.person,
+          color: "red",
+          source: far.source,
+          whereNow: null,
+          injured: null,
+          atHome: facts.place?.where === "home" || !facts.place ? true : null,
+          canMove: null,
+          hasMedicine: null,
+          saying: farDownSaying(input.state?.saying, nowMinuteOf(input)),
+          doing: null,
+          ai: false,
+          at: input.hour,
+        },
+      ];
+    }
+  }
   const where = whereOf(answer.location);
   const red = answer.pressesRed || stuck;
   if (stuck && named && !answer.pressesRed) onDrop?.("calm_while_down");
@@ -955,7 +1017,9 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const saying = factText(turn.saying, turn.source, place);
   const doingKept = factText(turn.doing, turn.source, place);
   // 言葉が全部落ちた・連絡しないと答えた時はコードの言葉（T174）。AI の物が何も残らなければ AI の印を付けない
-  return [{ ...turn, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: doingKept, ai: turn.ai && (saying !== null || doingKept !== null || !stuck) }];
+  // 自力で移れる人の「これから移ります」は計画の手段の記録に（T177）
+  const go = !turn.move && place === "home" && startsMove(facts, [saying, doingKept]) ? { move: planMoveOf(facts) } : {};
+  return [{ ...turn, ...go, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: doingKept, ai: turn.ai && (saying !== null || doingKept !== null || !stuck) }];
 }
 
 /** 機器が止まったまま連絡が途切れたら、ほかの理由の呼び出しでも連絡する間（分。T174。止まった時刻の呼び出しが 1 区切りの人数で持ち越された時） */
@@ -1173,7 +1237,7 @@ export function decideCallPickup(phone: PhoneState, roll: number, reachable = tr
   return "no_answer";
 }
 
-export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night"> & {
+export type PersonaCall = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night" | "startHour"> & {
   /** 電話に出る人の呼び方（本人・娘・支援者 1 など。本人役の周りの人の役割名） */
   callee: string;
   /**
@@ -1224,16 +1288,19 @@ function calleeCalls(persona: Persona, callee: string): string {
 
 export function callText(call: PersonaCall, persona: Persona): string {
   const now = Math.round(call.hour * 60);
+  const facts = personaFacts(persona, { person: call.person, world: call.world, state: call.state, actions: call.actions ?? [], now, night: call.night, startHour: call.startHour });
+  const start = clockStartOf(call);
+  const when = start === null ? undefined : whenWordsOf(facts);
   return [
     `時刻: 発災から ${clockLabel(now)}`,
-    ...(call.night ? [nightLine(call.hour)] : []),
-    ["今の様子:", ...[...worldWords(call.world, call.person, persona, now), ...advisedWords(call.world, call.person)].map((x) => `- ${x}`)].join("\n"),
+    ...timeLines(call.hour, call),
+    ["今の様子:", ...clockedWorld([...worldWords(call.world, call.person, persona, now), ...advisedWords(call.world, call.person)], start, now).map((x) => `- ${x}`)].join("\n"),
     // T123: 通話（最初の言葉・往復）にも持ちこたえる時間の今。評価の 2 回目で、通話の道だけ時計の段が無く、切れたあとも同じ調子で話した
-    ...clockLines(persona, call.world, call.person, now),
+    ...clockLines(persona, call.world, call.person, now, when),
     // T130: 帳面と計画（刻みの道と同じ）
-    factsBlock(personaFacts(persona, { person: call.person, world: call.world, state: call.state, actions: call.actions ?? [], now })),
+    factsBlock(facts),
     `この刻みの状況: ${ownIncidents(call.incidents, call.person).map((e) => e.text).join("、") || "新しい事はない"}`,
-    `前の連絡: ${stateWords(call.state)}`,
+    `前の連絡: ${stateWords(call.state, when)}`,
     `電話に出た人: ${call.callee}${calleeCalls(persona, call.callee)}${call.standIn ? "（本人への電話。本人は出られないので代わりに出た。本人の言葉として話さない）" : ""}`,
     ...(call.tell ? [`伝える様子: ${tellWords(call.tell)}`] : []),
   ].join("\n");
@@ -1261,14 +1328,14 @@ export async function personaCallReply(
   if (pickup !== "answers") return { pickup, speech: null, ai: false };
   if (!persona.reporters.some((r) => r.role === call.callee)) return { pickup: "no_answer", speech: null, ai: false };
   // T130: 家族・支援者が本人の声が無いと伝えたあと、人が来るまで本人は電話で話さない（物音だけ。Claude を呼ばない）
-  const facts = personaFacts(persona, { person: call.person, world: call.world, state: call.state, now: Math.round(call.hour * 60) });
+  const facts = personaFacts(persona, { person: call.person, world: call.world, state: call.state, now: Math.round(call.hour * 60), night: call.night, startHour: call.startHour });
   if (call.callee === "本人" && facts.voiceLost) return { pickup: "background_only", speech: null, ai: false };
   try {
     const text = pseudonymizeText(callText(call, persona), persona.key);
     const r = await askJson(buildPersonaCallRequest(persona.profile, text), ctx);
     // 電話に出た人の続柄に合わない文を落とす（T121）。帳面と食い違う文も（T130）
     const speaker = calleeSpeaker(persona, call.callee, persona.sex ?? null);
-    const said = dropFactSlips(dropSlips(r.value.speech, speaker, persona), { ...slipContextOf(facts), ...(speaker?.source === "family" ? { kin: null } : {}) });
+    const said = dropFactSlips(dropSlips(r.value.speech, speaker, persona), { ...talkContextOf(facts), ...(speaker?.source === "family" ? { kin: null } : {}) });
     const speech = cleanPersonaWords(said, persona.key, SPEECH_MAX);
     return { pickup, speech, ai: speech !== null };
   } catch (e) {
@@ -1370,7 +1437,7 @@ export async function personaTalkReply(
 ): Promise<TalkReplyWords> {
   try {
     const r = await askJson(buildPersonaTalkRequest(persona.profile, talk), ctx);
-    const raw = facts ? dropFactSlips(r.value.speech, { ...slipContextOf(facts), kin: null }) : r.value.speech;
+    const raw = facts ? dropFactSlips(r.value.speech, { ...talkContextOf(facts), kin: null }) : r.value.speech;
     let speech = cleanPersonaWords(raw, key, SPEECH_MAX);
     if (speech !== null && prior && prior.said.length > 0) {
       const fresh = dropRepeats(speech, prior.said).trim();
@@ -1402,21 +1469,24 @@ export const VISIT_SYSTEM = [
 /** 訪問の返事の形。location は本人役の今の様子と並べて読むだけで、聞いた安否（色・いる所）はコードが決める */
 export const VisitSchema = z.object({ condition: z.string(), location: z.string(), asks: z.array(z.string()), speech: z.string() });
 
-export type PersonaVisit = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night">;
+export type PersonaVisit = Pick<PersonaInput, "person" | "hour" | "world" | "incidents" | "state" | "night" | "startHour">;
 
 export function visitText(v: PersonaVisit, persona: Persona): string {
   const now = Math.round(v.hour * 60);
+  const facts = personaFacts(persona, { person: v.person, world: v.world, state: v.state, now, night: v.night, startHour: v.startHour });
+  const start = clockStartOf(v);
+  const when = start === null ? undefined : whenWordsOf(facts);
   return [
     `時刻: 発災から ${clockLabel(now)}`,
-    ...(v.night ? [nightLine(v.hour)] : []),
-    ["今の様子:", ...[...worldWords(v.world, v.person, persona, now), ...advisedWords(v.world, v.person)].map((x) => `- ${x}`)].join("\n"),
+    ...timeLines(v.hour, v),
+    ["今の様子:", ...clockedWorld([...worldWords(v.world, v.person, persona, now), ...advisedWords(v.world, v.person)], start, now).map((x) => `- ${x}`)].join("\n"),
     // T123: 訪問にも持ちこたえる時間の今（通話と同じ）
-    ...clockLines(persona, v.world, v.person, now),
+    ...clockLines(persona, v.world, v.person, now, when),
     // T130: 帳面と計画（刻みの道と同じ）
-    factsBlock(personaFacts(persona, { person: v.person, world: v.world, state: v.state, now })),
+    factsBlock(facts),
     `この刻みの状況: ${ownIncidents(v.incidents, v.person).map((e) => e.text).join("、") || "新しい事はない"}`,
-    `前の連絡: ${stateWords(v.state)}`,
-    `ケアマネが${visitPlaceWords(personaFacts(persona, { person: v.person, world: v.world, state: v.state, now }))}に着いた。`,
+    `前の連絡: ${stateWords(v.state, when)}`,
+    `ケアマネが${visitPlaceWords(facts)}に着いた。`,
   ].join("\n");
 }
 
@@ -1447,8 +1517,8 @@ export async function personaVisitReport(persona: Persona, visit: PersonaVisit, 
     const text = pseudonymizeText(visitText(visit, persona), persona.key);
     const r = await askJson(buildPersonaVisitRequest(persona.profile, text), ctx);
     // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす（訪問は本人のいる所へ。T167 で帳面のいる所に。分からなければ家）
-    const facts = personaFacts(persona, { person: visit.person, world: visit.world, state: visit.state, now: Math.round(visit.hour * 60) });
-    const slip = { ...slipContextOf(facts, facts.place?.where ?? "home"), kin: null };
+    const facts = personaFacts(persona, { person: visit.person, world: visit.world, state: visit.state, now: Math.round(visit.hour * 60), night: visit.night, startHour: visit.startHour });
+    const slip = { ...talkContextOf(facts, facts.place?.where ?? "home"), kin: null };
     const condition = cleanPersonaWords(dropFactSlips(r.value.condition, slip), persona.key, VISIT_CONDITION_MAX, CONDITION_BANNED);
     const speech = cleanPersonaWords(dropFactSlips(r.value.speech, slip), persona.key, SPEECH_MAX);
     const asks = screenAsks(asksOf(r.value.asks, VISIT_ASKS_MAX), facts);

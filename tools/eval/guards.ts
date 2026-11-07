@@ -6,7 +6,7 @@
 // 足し方（docs/progress/t157.md の「守りの足し方」）: 下書き（npm run eval:drafts）の「受け入れの確かめ」の行を写し、
 // id（台-何-どうなるか）・since（守りを始めた回）・task（直した作業）・label（守る事の短い言葉）を書く。value は直したあとの回の数。
 
-import { findingId, meets, type Accept, type Bench, type Finding } from "./findings.ts";
+import { findingId, meets, type Accept, type Bench, type Finding, type RunClient } from "./findings.ts";
 
 export type Guard = Accept & {
   id: string;
@@ -19,6 +19,8 @@ export type Guard = Accept & {
   label: string;
   /** 戻ったときに疑うファイル */
   suspects?: string[];
+  /** 確かめる回の種類（T176）。無ければ全部の回。数え直しは前の答えを返すので、読み取りの揺れの守りは本物の回だけで見る */
+  clients?: ReadonlyArray<RunClient>;
 };
 
 export const GUARDS: ReadonlyArray<Guard> = [
@@ -200,11 +202,15 @@ export const GUARDS: ReadonlyArray<Guard> = [
   // 数え直しは当てたのに紙に出ない選択肢 23・正解に無い印 0。置き間違いは 6 回目（195）より増やさない
   { id: "forms-mark-extra-none", bench: "forms", item: "forms.markExtra", op: "<=", value: 0, since: "r8", task: "T164", label: "台帳に無い選択肢に印を付けない", suspects: ["lib/forms/option-values.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-wrong", bench: "forms", item: "forms.paperWrong", op: "<=", value: 195, since: "r8", task: "T164", label: "紙の置き間違いを 6 回目より増やさない", suspects: ["lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts", "lib/forms/form-shape.ts"] },
+  // T176: 下の 3 つは本物の回だけで見る（clients）。線の数は T175 の数え直しの数のまま。引き直すかは次の本物の回の数で設計の側が決める（docs/progress/t176.md）
   // T175: 同じ様式でも読み取りが回ごとに違い、見直しの要確認が揺れた（熊本市 55 → 361 など、r9 の合計 2,178）。読み方をそろえ、字の大きさの決まりと重複の見方を
   // 読み取りの名前に頼らない形にした。数は r8・r9 の記録の数え直しの悪い方（要確認 591、置けず 157、差は r8 と r9 の様式ごとの差の合計 245）
-  { id: "forms-review-check", bench: "forms", item: "forms.reviewCheck", op: "<=", value: 591, since: "r10", task: "T175", label: "見直しの要確認を読み方の揺れで増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts", "lib/forms/review.ts"] },
-  { id: "forms-unplaced-limit", bench: "forms", item: "forms.unplaced", op: "<=", value: 157, since: "r10", task: "T175", label: "置けなかった欄を増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts"] },
-  { id: "forms-review-drift", bench: "forms", item: "forms.reviewDrift", op: "<=", value: 245, since: "r10", task: "T175", label: "同じ様式の要確認の回ごとの差を広げない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-read.ts", "tools/eval/forms/drift.ts"] },
+  { id: "forms-review-check", clients: ["real"], bench: "forms", item: "forms.reviewCheck", op: "<=", value: 591, since: "r10", task: "T175", label: "見直しの要確認を読み方の揺れで増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts", "lib/forms/review.ts"] },
+  { id: "forms-unplaced-limit", clients: ["real"], bench: "forms", item: "forms.unplaced", op: "<=", value: 157, since: "r10", task: "T175", label: "置けなかった欄を増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/overlay-sheet.ts"] },
+  { id: "forms-review-drift", clients: ["real"], bench: "forms", item: "forms.reviewDrift", op: "<=", value: 245, since: "r10", task: "T175", label: "同じ様式の要確認の回ごとの差を広げない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-read.ts", "tools/eval/forms/drift.ts"] },
+  // T179: 評価の 11 回目で松山市の住居の構造を □ 1 つに読み、入力の 54 枚で紙が空いた（項目は同じで様式の当たりと要確認に出ない）。線は本物の回の数の r8 6,372（r9 6,392・r11 6,331）。
+  // 数え直しは前の答えを返すので本物の回だけで見る。考えは docs/progress/t179.md。比（当たり/字のある欄）なので様式を絞った回でも同じ物差し
+  { id: "forms-paper-total", clients: ["real"], bench: "forms", item: "forms.paper.total", op: ">=", value: 6372 / 6509, since: "r12", task: "T179", label: "紙の全体を読みの形の揺れで落とさない", suspects: ["lib/forms/lone-mark.ts", "lib/forms/read-settle.ts", "lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },
   { id: "persona-ledger-not-found", bench: "persona", item: "count:persona:not_found:/", op: "<=", value: 2, since: "r9", task: "T166", label: "編集の面の目次と保存で迷わない", suspects: ["components/person/SectionEdit.tsx", "lib/labels.ts"] },
@@ -249,8 +255,29 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-calm-while-down", bench: "drill", item: "count:drill:facts:calm_while_down", op: "<=", value: 0, since: "r10", task: "T174", label: "機器が止まったまま落ち着いた言い方をしない", suspects: ["lib/drill/person-facts.ts", "lib/drill/talk-quick.ts"] },
   { id: "drill-self-answer", bench: "drill", item: "count:drill:facts:self_answer", op: "<=", value: 0, since: "r10", task: "T174", label: "電話に出られない本人が電話で話さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/hooks.ts"] },
   { id: "drill-road-said", bench: "drill", item: "count:drill:facts:road_said", op: "<=", value: 0, since: "r10", task: "T174", label: "道の開通と本人役の言葉・訳が食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/engine.ts", "lib/drill/scenarios.ts"] },
+  // T177: 評価の 10 回目で機器の切れた時刻の言葉がずれた（経過の数をそのまま時刻に・計算違い）。帳面を時計の時刻で渡し、門が帳面の時刻に直すので画面の言葉では 0
+  // T177: 評価の 10 回目の 3 回とも、手も出来事も無いのに本人役の言葉だけで移った。移った事はコードの記録だけに持つので、門のあとの言葉と安否では 0
+  { id: "drill-place-flip", bench: "drill", item: "count:drill:facts:place_flip", op: "<=", value: 0, since: "r11", task: "T177", label: "手も記録も無いのにいる所が変わらない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  { id: "drill-move-said", bench: "drill", item: "count:drill:facts:move_said", op: "<=", value: 0, since: "r11", task: "T177", label: "記録に無い移動の言葉を出さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  { id: "drill-move-unrecorded", bench: "drill", item: "count:drill:facts:move_unrecorded", op: "<=", value: 0, since: "r11", task: "T177", label: "移ると言った人に移った記録が付く", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T178: 評価の 11 回目で、同じ時刻に行方不明の出来事と「家にいます」の連絡が並び、同居の家族のいる人に「家族 帰宅困難」が出て、どちらも講評に残った。監督の出来事を次の区切りへ回し、帰宅困難は同居のいない人だけに
+  { id: "drill-same-cut-place", bench: "drill", item: "count:drill:facts:same_cut_place", op: "<=", value: 0, since: "r12", task: "T178", label: "いる所を変える出来事と同じ時刻に家と言う連絡を並べない", suspects: ["lib/drill/engine.ts", "lib/drill/state-rules.ts", "lib/drill/schedule.ts"] },
+  { id: "drill-family-away-together", bench: "drill", item: "count:drill:facts:family_away_together", op: "<=", value: 0, since: "r12", task: "T178", label: "同居の家族のいる人に家族の帰宅困難を出さない", suspects: ["lib/drill/event-catalog.ts", "lib/drill/quiet-event.ts"] },
+  // T178: 評価の 11 回目で、止まったまま 15〜30 時間の無連絡が物差しの外にあった（r11 の記録に当てて 4 件）。呼ぶ間を伸ばし、本人のボタンが届かない間は離れた家族が伝える
+  { id: "drill-down-gap", bench: "drill", item: "count:drill:facts:down_gap", op: "<=", value: 1, since: "r12", task: "T178", label: "機器が止まったままの間に 12 時間を超えて連絡を途切れさせない（1 件まで）", suspects: ["lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T177: r10 は 1 回 77、上限比の最大 62.7%（94 回）で T174 の見込み 57% を超えた。巡回だけの人の呼び出しを相乗りに、いる所の問いをコードの答えにした。r10 の数を超えない形で守る
+  { id: "drill-calls-r10", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 77, since: "r11", task: "T177", label: "AI の呼び出しを 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
+  { id: "drill-cap-r10", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.627, since: "r11", task: "T177", label: "1 訓練の上限との比を 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
+  { id: "drill-clock-said", bench: "drill", item: "count:drill:facts:clock_said", op: "<=", value: 0, since: "r11", task: "T177", label: "機器の切れた時刻の言葉が帳面の時計と食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts", "lib/drill/night.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];
+
+const judgedOn = (g: Guard, client: RunClient | undefined) => !g.clients || !client || g.clients.includes(client);
+
+/** この種類の回では見ない守り（外れにも通るにもしない。回の 1 行に未確認と出す） */
+export function unjudgedGuards(bench: Bench, client: RunClient, guards: ReadonlyArray<Guard> = GUARDS): Guard[] {
+  return guards.filter((g) => g.bench === bench && !judgedOn(g, client));
+}
 
 /** 守りの確かめ。values は回の項目の数、counts は同じ原因の指摘の数（causeCounts）。数の無い項目は確かめない */
 export function guardFindings(args: {
@@ -260,10 +287,12 @@ export function guardFindings(args: {
   counts: Readonly<Record<string, number>>;
   repro: string[];
   guards?: ReadonlyArray<Guard>;
+  /** 回の種類。渡せば、その種類で見ない守り（Guard.clients）を飛ばす */
+  client?: RunClient;
 }): Finding[] {
   const out: Finding[] = [];
   for (const g of args.guards ?? GUARDS) {
-    if (g.bench !== args.bench) continue;
+    if (g.bench !== args.bench || !judgedOn(g, args.client)) continue;
     const v = g.item.startsWith("count:") ? (args.counts[g.item.slice("count:".length)] ?? 0) : args.values[g.item];
     if (v === undefined || meets(v, g.op, g.value)) continue;
     const cause = `guard:${g.id}`;
@@ -286,6 +315,6 @@ export function guardFindings(args: {
 }
 
 /** 項目の守り（点数の表のしきい値と一緒に見る） */
-export function guardsOn(item: string, guards: ReadonlyArray<Guard> = GUARDS): Guard[] {
-  return guards.filter((g) => g.item === item);
+export function guardsOn(item: string, guards: ReadonlyArray<Guard> = GUARDS, client?: RunClient): Guard[] {
+  return guards.filter((g) => g.item === item && judgedOn(g, client));
 }

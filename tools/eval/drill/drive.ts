@@ -99,6 +99,8 @@ export type RunOutcome = {
   plan: RunPlan;
   drillId: string | null;
   status: string;
+  /** 発災の時刻（開始の時刻。T177。帳面の検査が切れた時刻を時計で比べる） */
+  startedAt?: string;
   /** 進めた回数（開始を除く） */
   advances: number;
   replay: Replay | null;
@@ -476,7 +478,7 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
     }
     const callsLeft = (await loadDrillScreen(db, { officeId: DEMO.id }, drillId, null))?.left ?? null;
     log.push({ type: "end", status: replay.drill.status, step: replay.drill.step, minute: replay.minute, advances, callsLeft });
-    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true, ...storedOf(sqlite, drillId), incoming };
+    return { plan, drillId, status: replay.drill.status, advances, replay, ops, errors, aiCalls: aiCallsOf(sqlite), callsLeft, names, worldAgent: worldAgentOf(sqlite), terms: options.terms === true, startedAt: new Date(start).toISOString(), ...storedOf(sqlite, drillId), incoming };
   } finally {
     sqlite.close();
   }

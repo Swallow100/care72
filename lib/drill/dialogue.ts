@@ -102,6 +102,8 @@ export type TalkTurn = {
   /** 電話で伝える様子（手の返事の聞いた安否）。言葉が食い違わないように渡す */
   tell: HeardSignal | null;
   night?: boolean;
+  /** 夜間発災でない訓練の発災の時刻（時。T177） */
+  startHour?: number;
   /** 最初の言葉（手の返事の吹き出し） */
   first: string | null;
   lines: ReadonlyArray<TalkLine>;
@@ -133,6 +135,8 @@ export type VisitTurn = {
   incidents: ReadonlyArray<DrillIncident>;
   state: PersonState | null;
   night?: boolean;
+  /** 夜間発災でない訓練の発災の時刻（時。T177） */
+  startHour?: number;
 };
 /**
  * 訪問の口の返事（T118）。report は様子と頼み事（使える物が無ければ null）、called は Claude を呼んだか

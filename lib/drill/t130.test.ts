@@ -137,11 +137,11 @@ describe("赤（動けない）→ 緑の門", () => {
     expect(t).toMatchObject({ color: "green", whereNow: "home" });
   });
 
-  it("計画で避難先へ移った（手段あり）は緑を使う。同じ人で計画が無ければ使わない", () => {
+  it("計画で避難先へ移ると答えた（手段あり）は緑を使い、移った事は記録で（T177。着くまで家のまま）。同じ人で計画が無ければ使わない", () => {
     const moved = answer({ contactsCaremanager: true, from: "娘", location: "shelter", speech: "避難所に着きました。" });
     const plan = buildPersona(seedInput("p-06"), { on: "2026-11-05" });
     const noPlan = buildPersona(withoutPlan(seedInput("p-06")), { on: "2026-11-05" });
-    expect(personaTurns(personaInput("p-06", { state: red }), plan, moved)[0]).toMatchObject({ color: "green", whereNow: "shelter" });
+    expect(personaTurns(personaInput("p-06", { state: red }), plan, moved)[0]).toMatchObject({ color: "green", whereNow: "home", move: { to: "shelter", by: "plan" } });
     expect(personaTurns(personaInput("p-06", { state: red }), noPlan, moved)).toEqual([]);
   });
 

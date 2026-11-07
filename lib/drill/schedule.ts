@@ -25,6 +25,8 @@ function incidentOf(s: Scheduled): DrillIncident {
     ...(s.basis ? { basis: s.basis } : {}),
     actor: "director",
     at: s.at / 60,
-    ai: false,
+    // 区切りの終わりから次へ回した監督の出来事（T178）は AI の印と種類をそのまま持つ
+    ...(s.inject ? { inject: s.inject } : {}),
+    ai: s.ai === true,
   };
 }
