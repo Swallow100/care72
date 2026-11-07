@@ -227,6 +227,19 @@ export async function acceptRequest(db: D1Database, actor: StaffActor, requestId
   return { ok: true, personId: req.person_id, custodyId };
 }
 
+/**
+ * 本人の依頼中の行き先（QR の頁の受入の既定、T184）。医療班の役だけで、無ければ null。審査員はデモの人の依頼だけ。
+ * 受入一覧の避難所の欄の値（?shelter=）より先に使う（欄の既定は最近の受入の避難所で、依頼の行き先の病院と食い違った）
+ */
+export async function openRequestShelter(db: D1Database, actor: StaffActor, personId: string): Promise<string | null> {
+  if (!seesRequests(actor)) return null;
+  const r = await db
+    .prepare(`SELECT r.shelter FROM custody_requests r JOIN people p ON p.id = r.person_id WHERE r.person_id = ?1 AND r.state = 'open'${wallOf(actor)}`)
+    .bind(personId)
+    .first<{ shelter: string }>();
+  return r?.shelter ?? null;
+}
+
 /** 受入不可を返す（医療班の役）。依頼中だけ */
 export async function declineRequest(db: D1Database, actor: StaffActor, requestId: string, at: string): Promise<ReplyResult> {
   if (!seesRequests(actor)) return { ok: false, error: "forbidden" };

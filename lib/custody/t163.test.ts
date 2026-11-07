@@ -188,12 +188,13 @@ describe("T163 医療班の一覧と返事", () => {
   it("もう自分が受け入れている人の依頼は、その受け持ちを結ぶ。送ったあとに同意が変わった人は受け入れない", async () => {
     const a = await cm();
     const med = staffActor(plainStaff("medical"))!;
-    const one = await sendRequest(db, a, { personId: "p-01", shelter: SHELTER }, AT);
-    const two = await sendRequest(db, a, { personId: "p-02", shelter: SHELTER }, AT);
-    if (!one.ok || !two.ok) throw new Error("送れない");
+    // 先に受け入れてから依頼が来た人（T184 から、依頼中に受け入れると依頼はその場で「受入」になるので、ここは依頼の前に受け入れる）
     const { receive } = await import("./store.ts");
     const pre = await receive(db, med, { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
     if (!pre.ok) throw new Error("受け入れられない");
+    const one = await sendRequest(db, a, { personId: "p-01", shelter: SHELTER }, AT);
+    const two = await sendRequest(db, a, { personId: "p-02", shelter: SHELTER }, AT);
+    if (!one.ok || !two.ok) throw new Error("送れない");
     expect(await acceptRequest(db, med, one.requestId, LATER)).toEqual({ ok: true, personId: "p-01", custodyId: pre.custodyId });
     sqlite.prepare("UPDATE consents SET status = 'refused' WHERE person_id = 'p-02' AND kind = 'medical'").run();
     expect(await acceptRequest(db, med, two.requestId, LATER)).toEqual({ ok: false, error: "consent" });

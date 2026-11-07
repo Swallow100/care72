@@ -6,6 +6,8 @@
 // 行に出すのはカナ・年齢・依頼元の事業所・行き先・依頼の時刻だけ（受け入れる前は本人確認の範囲。薬・機器は受け入れてから）。
 // 依頼が無ければ面ごと出さない（空の面を作らない。一括受入の失敗が残っている間は出す）。
 // 一括受入（T172）: 行か事業所の欄で選び、1 回の避難所の入力で全員に（空なら各人の依頼の行き先）。1 人ずつ今の受け口へ送る（lib/custody/bulk.ts）。
+// 行ごとの「受入」も同じ避難所の欄を使う（T184。前は欄に入れても行の受入では依頼の行き先のままだった）。
+// QR・氏名検索から受け入れても依頼の行は消える（lib/custody/store.ts の receive が依頼中を「受入」にする。T184）。
 // 事業所でまとめるのは依頼の来ている行だけで、依頼の無い人を足さない。
 
 import { useRouter } from "next/navigation";
@@ -137,6 +139,7 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
                     <RequestRow
                       key={r.id}
                       r={r}
+                      shelter={shelter}
                       picked={picked.has(r.id)}
                       pickable={picked.has(r.id) || !full}
                       locked={bulk.busy}
@@ -153,14 +156,30 @@ export function StaffRequests({ requests }: { requests: RequestHit[] }) {
   );
 }
 
-function RequestRow({ r, picked, pickable, locked, onPick }: { r: RequestHit; picked: boolean; pickable: boolean; locked: boolean; onPick: () => void }) {
+function RequestRow({
+  r,
+  shelter,
+  picked,
+  pickable,
+  locked,
+  onPick,
+}: {
+  r: RequestHit;
+  /** 上の避難所の欄の値（T184。行ごとの「受入」も同じ欄を使う。空なら依頼の行き先） */
+  shelter: string;
+  picked: boolean;
+  pickable: boolean;
+  locked: boolean;
+  onPick: () => void;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState<"accept" | "decline" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const act = async (answer: "accept" | "decline") => {
     setBusy(answer);
     setError(null);
-    const res = await reply(r.id, answer);
+    const place = answer === "accept" ? shelter.trim() : "";
+    const res = await reply(r.id, answer, place || undefined);
     if (res.ok && answer === "accept" && res.custodyId) {
       router.push(receivedHref(res.custodyId));
       router.refresh();
