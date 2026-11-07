@@ -151,46 +151,27 @@ async function finish(id: string) {
 const rawScore = (id: string) => (sqlite.prepare("SELECT score FROM drills WHERE id = ?").get(id) as { score: string | null }).score;
 
 describe("人ごとの講評を訓練の間に作る", () => {
-  it("落ち着いた人（前の刻みと同じ流れ）を 1 回にまとめて作り、刻みの裏では作り直さない。後で手が入った人は終わりに作り直す", async () => {
+  it("刻みの裏では作らず（評価の 12 回目で全部が終わりに作り直された）、終わりの講評と並べて全員分を作る", async () => {
     await start("d1");
     await act("d1", "call_person", "p-03");
     const f = fake(byModel);
     const opts = { claude: f.client, now: () => new Date(LATER) };
-    // 1 回目の刻み: 初めて見た流れ（印を覚えるだけ）
-    await step("d1");
-    await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
-    expect(f.calls).toHaveLength(0);
-    expect((await readPersons(db, DEMO.id, "d1"))["p-03"]?.seen).toMatch(/^[0-9a-f]{8}$/);
-    // 2 回目の刻み: 流れが同じ → 作る（手か着信のある人だけ。1 刻みに 1 回、PERSONS_PER_TICK 人まで）
-    await step("d1");
-    await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
-    expect(haiku(f.calls)).toHaveLength(1);
-    expect(aliasesOf(f.calls[0]).length).toBeLessThanOrEqual(PERSONS_PER_TICK);
-    expect(f.calls[0].model).toBe(PERSON_REVIEW_SPEC.model);
-    expect(systemOf(f.calls[0])).toContain(PERSON_REVIEW_SYSTEM);
-    const sent = haiku(f.calls).map(recordOf).find((t) => t.includes("本人電話 → "))!;
-    expect(sent).toContain("本人電話 → ");
-    // 渡した物に氏名・電話・町名が無い（全体の講評と同じ伏せ方）
-    expect(findLeaks(JSON.stringify(f.calls[0].messages), ALL_KEY)).toEqual([]);
-    const after = await readPersons(db, DEMO.id, "d1");
-    expect(after["p-03"]?.done?.good[0]).toContain("本人電話");
-    expect(after["p-03"]?.tries).toBe(1);
-    // 訓練の間でも drills.score は採点の前の殻（採点としては読まない）
-    expect(parseStoredScore(rawScore("d1"))).toBeNull();
-    // 3 回目: 変わらない → 作り直さない
-    await step("d1");
-    await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
-    expect((await readPersons(db, DEMO.id, "d1"))["p-03"]?.tries).toBe(1);
-    // 後で手が入る → 刻みの裏では作り直さない（まだ作っていない人だけ。刻みの裏の呼び出しは PERSON_TICK_CALLS_MAX 回まで）
-    await act("d1", "call_person", "p-03");
+    expect(PERSON_TICK_CALLS_MAX).toBe(0);
     while ((await step("d1")) === "running") await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
-    expect((await readPersons(db, DEMO.id, "d1"))["p-03"]?.tries).toBe(1);
-    expect(haiku(f.calls).length).toBeLessThanOrEqual(PERSON_TICK_CALLS_MAX);
-    // 終わりの講評で、流れの変わった p-03 を作り直す
+    expect(haiku(f.calls)).toHaveLength(0);
     expect((await reviewPost(ENV(), careManager(), "d1", {}, opts)).status).toBe(200);
+    const calls = haiku(f.calls);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(aliasesOf(c).length).toBeLessThanOrEqual(PERSONS_PER_TICK);
+      expect(c.model).toBe(PERSON_REVIEW_SPEC.model);
+      expect(systemOf(c)).toContain(PERSON_REVIEW_SYSTEM);
+      // 渡した物に氏名・電話・町名が無い（全体の講評と同じ伏せ方）
+      expect(findLeaks(JSON.stringify(c.messages), ALL_KEY)).toEqual([]);
+    }
     const end = await readPersons(db, DEMO.id, "d1");
-    expect(end["p-03"]?.tries).toBe(2);
-    // 1 人の回数は PERSON_TRIES_MAX まで
+    expect(end["p-03"]?.done?.good[0]).toContain("本人電話");
+    expect(end["p-03"]?.tries).toBe(1);
     for (const r of Object.values(end)) expect(r.tries).toBeLessThanOrEqual(PERSON_TRIES_MAX);
   });
 
