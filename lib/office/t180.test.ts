@@ -512,3 +512,54 @@ describe("同じ続柄", () => {
     expect(labels).toEqual(["娘 架空 花子の娘", "娘 架空 桃"]);
   });
 });
+
+describe("11/7 の見直しの直し", () => {
+  it("管理者でない足したケアマネに替えると、管理者の操作はできない（管理者の印のとおり）", async () => {
+    const s = await judgeSandbox();
+    const cm = await addCm(s.principal, "架空 補佐", "sbx-helper-1");
+    const p = (await asOk(s.token, { role: "care_manager", id: cm })).principal;
+    expect(p.admin).toBe(false);
+    expect(actorOf(p).admin).toBe(false);
+    // 管理者（b）は今まで通り
+    expect(actorOf(s.principal).admin).toBe(true);
+  });
+
+  it("本物の医療班（壁の外）の受入依頼・検索・避難所・受入に、新規事業所の人と依頼が出ない", async () => {
+    sqlite
+      .prepare(
+        `INSERT INTO accounts (id, office_id, role, is_office_admin, display_name, login_id, password_hash, created_at)
+         VALUES ('acct-real-med', NULL, 'medical', 0, '架空 医師', 'realmed', ?, ?)`,
+      )
+      .run(otherHash, AT);
+    const real = staffActor((await loginOk("realmed", OTHER_PW)).principal)!;
+    expect(real.walled).toBe(false);
+
+    const s = await judgeSandbox();
+    const { personId } = await addPerson(s.principal, "架空 花子", "カクウ ハナコ");
+    const sent = await sendRequest(db, actorOf(s.principal), { personId, shelter: "架空 小学校" }, AT);
+    expect(sent.ok).toBe(true);
+    const sbxMed = staffActor((await asOk(s.token, { role: "medical" })).principal)!;
+    const reg = await registerOnSite(
+      db,
+      sbxMed,
+      { name: "架空 現地", kana: "カクウ ゲンチ", age: 80, birthDate: null, medications: [], devices: [], contact: null, shelter: "審査員の避難所" },
+      AT,
+      { personId: "p-site-sbx2" },
+    );
+    expect(reg.ok).toBe(true);
+
+    expect((await openRequests(db, real, TODAY)).map((r) => r.personId)).not.toContain(personId);
+    expect((await acceptRequest(db, real, (sent as { requestId: string }).requestId, AT)).ok).toBe(false);
+    expect((await searchPeople(db, real, { text: "ハナコ", birth: null }, TODAY)).hits).toEqual([]);
+    expect((await searchPeople(db, real, { text: "ゲンチ", birth: null }, TODAY)).hits).toEqual([]);
+    const { listShelters } = await import("../custody/search.ts");
+    expect((await listShelters(db, real)).map((x) => x.shelter)).not.toContain("審査員の避難所");
+    const { receive } = await import("../custody/store.ts");
+    expect((await receive(db, real, { personId: "p-site-sbx2", shelter: "架空 中学校", via: "search" }, AT)).ok).toBe(false);
+    expect((await receive(db, real, { personId, shelter: "架空 中学校", via: "search" }, AT)).ok).toBe(false);
+    // 本物の事業所の人は今まで通り見える
+    expect((await searchPeople(db, real, { text: "タロウ", birth: null }, TODAY)).hits.map((h) => h.id)).toEqual([PARTNER_PERSON]);
+    // 新規事業所の医療班は今まで通り
+    expect((await openRequests(db, sbxMed, TODAY)).map((r) => r.personId)).toEqual([personId]);
+  });
+});

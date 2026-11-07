@@ -40,7 +40,8 @@ export function officeActor(p: Principal | null): OfficeActor | null {
     officeId: p.office.id,
     authorId: p.accountId,
     authorRole: "care_manager",
-    admin: p.admin || p.judge,
+    // 試用事業所の中の役（T180）は審査員でも管理者の印のとおり（足したケアマネに替えて管理者の操作をさせない。11/7 の見直し）
+    admin: p.admin || (p.judge && p.sandbox !== true),
     // 審査員が足して管理者にしたアカウントも、事業所の地域は書けない（審査員と同じ）。
     // 例外は審査員の試用事業所の管理者の役（T115）: その審査員のセッションだけの事業所で、変えてもほかの審査員の地図は動かない
     placeEdit: p.admin && (!walled || p.sandbox === true),
