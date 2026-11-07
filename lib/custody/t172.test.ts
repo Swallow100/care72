@@ -129,6 +129,8 @@ describe("送り方（runBulk）", () => {
     expect(href).toBe("/staff?received=cu-1,cu-2");
     expect(parseReceived({ received: "cu-1,cu-2" })).toEqual(["cu-1", "cu-2"]);
     expect(parseReceived({ received: "cu-1,<x>" })).toEqual([]);
+    // 同じ id の重なりは 1 つに（T184）
+    expect(parseReceived({ received: "cu-1,cu-1,cu-2,cu-1" })).toEqual(["cu-1", "cu-2"]);
     const rows = [{ custodyId: "a" }, { custodyId: "b" }, { custodyId: "c" }, { custodyId: "d" }];
     expect(pinReceived(rows, ["c", "b"]).map((r) => r.custodyId)).toEqual(["c", "b", "a", "d"]);
     expect(pinReceived(rows, ["z"]).map((r) => r.custodyId)).toEqual(["a", "b", "c", "d"]);
@@ -193,7 +195,7 @@ describe("受入依頼の一括受入", () => {
     expect(groups.flatMap((g) => g.requests.map((r) => r.personId))).toEqual(["p-01", "p-02"]);
     expect(groups.map((g) => g.requests.length).reduce((a, b) => a + b, 0)).toBe(2);
     // 依頼の行の鍵は前のまま（漢字の氏名・薬は持たない）
-    expect(Object.keys(list[0]!).sort()).toEqual(["age", "id", "kana", "office", "personId", "requestedAt", "shelter"]);
+    expect(Object.keys(list[0]!).sort()).toEqual(["age", "id", "kana", "office", "officeId", "personId", "requestedAt", "shelter"]);
     const html = renderToStaticMarkup(createElement(StaffRequests, { requests: list }));
     expect(html).toContain('data-request-office="');
     expect(html).toContain("一括受入");
@@ -204,11 +206,20 @@ describe("受入依頼の一括受入", () => {
   });
 
   it("事業所ごとにまとめ、事業所の順は古い依頼の順、中は来た順", () => {
-    const hit = (id: string, office: string): RequestHit => ({ id, personId: id, kana: "ア", age: null, office, shelter: "み", requestedAt: AT });
+    const hit = (id: string, office: string): RequestHit => ({ id, personId: id, kana: "ア", age: null, officeId: `o-${office}`, office, shelter: "み", requestedAt: AT });
     const groups = requestsByOffice([hit("a", "東"), hit("b", "西"), hit("c", "東")]);
     expect(groups.map((g) => [g.office, g.requests.map((r) => r.id)])).toEqual([
       ["東", ["a", "c"]],
       ["西", ["b"]],
+    ]);
+  });
+
+  it("まとめの鍵は事業所の id。同じ名前の別の事業所は別の組（T184）", () => {
+    const hit = (id: string, officeId: string): RequestHit => ({ id, personId: id, kana: "ア", age: null, officeId, office: "みどり居宅", shelter: "み", requestedAt: AT });
+    const groups = requestsByOffice([hit("a", "o-1"), hit("b", "o-2"), hit("c", "o-1")]);
+    expect(groups.map((g) => [g.officeId, g.requests.map((r) => r.id)])).toEqual([
+      ["o-1", ["a", "c"]],
+      ["o-2", ["b"]],
     ]);
   });
 });

@@ -61,8 +61,11 @@ function three(clocks: TriageClock[], h: number, s: Situation) {
   return { self, received, transported };
 }
 
-/** 言葉のほか（色・行・組・残り・足す言葉・骨格）が同じか */
-const facts = (r: TriageResult) => [r.color, r.baseColor, r.rule, r.group, r.remainingHours, r.tier, r.hasSupporter, r.qualifiers];
+/** 受け入れの前の赤を添える言葉（案 11、T184）。受入・搬送の例はどれも前に本人の赤がある */
+const BEFORE = "、受入前 本人が「けが」「動けない」";
+
+/** 言葉のほか（色・行・組・残り・足す言葉・骨格）が同じか。受け入れの前の赤の言葉（案 11）は受入・搬送だけに付くので外して比べる */
+const facts = (r: TriageResult) => [r.color, r.baseColor, r.rule, r.group, r.remainingHours, r.tier, r.hasSupporter, r.qualifiers.filter((q) => q !== "before_arrival")];
 
 const CASES: Array<{ rule: RuleId; clocks: TriageClock[]; h: number; now: number; self: string; received: string; transported: string }> = [
   {
@@ -117,7 +120,7 @@ describe("受入・搬送から来た緑の理由の言葉（T80）", () => {
     it(`${c.rule}: 本人の緑は「${c.self}」、受入は「${c.received}」、搬送は「${c.transported}」。色・行・組・残り・並びは同じ`, () => {
       const { self, received, transported } = three(c.clocks, c.h, at(c.now));
       expect([self.rule, received.rule, transported.rule]).toEqual([c.rule, c.rule, c.rule]);
-      expect([self.reason, received.reason, transported.reason]).toEqual([c.self, c.received, c.transported]);
+      expect([self.reason, received.reason, transported.reason]).toEqual([c.self, c.received + BEFORE, c.transported + BEFORE]);
       expect(facts(received)).toEqual(facts(self));
       expect(facts(transported)).toEqual(facts(self));
       expect(compareResults(received, self)).toBe(0);
@@ -138,7 +141,7 @@ describe("受入・搬送から来た緑の理由の言葉（T80）", () => {
 
   it("山田（酸素 内蔵電池 2 時間）: 停電 3 時間で受け入れても要確認のまま、理由は「受入のあとも 酸素 内蔵電池 2 時間を超過」", () => {
     const r = triage({ person: person([OXYGEN]), signals: [RED_BEFORE], arrivals: [{ at: iso(3), shelter: "かわなぎ小学校" }] }, at(4));
-    expect([r.color, r.rule, r.reason, stateLabel(r)]).toEqual(["yellow", "green_out_before_report", "受入のあとも 酸素 内蔵電池 2 時間を超過", "要確認"]);
+    expect([r.color, r.rule, r.reason, stateLabel(r)]).toEqual(["yellow", "green_out_before_report", `受入のあとも 酸素 内蔵電池 2 時間を超過${BEFORE}`, "要確認"]);
     expect(r.reason).not.toContain("無事");
   });
 

@@ -29,10 +29,8 @@ export default async function RoleSelectPage({ searchParams }: { searchParams: P
     <Page width="full" className="max-w-md py-8 sm:py-14">
       <div className="flex items-center gap-3">
         <BrandMark size={44} className="shrink-0" />
-        <div className="min-w-0">
-          <h1 className="text-xl leading-7 font-bold">役選択</h1>
-          <p className="text-xs text-muted">再選択: 右上の「役変更」</p>
-        </div>
+        {/* 選び直しの案内の 1 行は外した（T184。この画面のヘッダーには役変更が無く、画面に無い物を指していた） */}
+        <h1 className="min-w-0 text-xl leading-7 font-bold">役選択</h1>
       </div>
       <form method="post" action="/api/auth/role" className="mt-4 grid gap-1">
         {choiceGroups(choices).map((g, i) =>

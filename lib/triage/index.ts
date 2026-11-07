@@ -54,7 +54,7 @@ export type RuleId =
   | "green"; // 緑 → 緑、一番下
 
 /** 理由に足す言葉 */
-export type QualifierId = "ai_classified" | "unchecked" | "self_green_set_aside" | "no_supporter";
+export type QualifierId = "before_arrival" | "ai_classified" | "unchecked" | "self_green_set_aside" | "no_supporter";
 
 /**
  * 表の緑（行 green）がどこから来たか（T78）。医療班・行政の受け入れ（arrival）か、受け入れを搬送で閉じた知らせ（transport）。
@@ -372,7 +372,7 @@ function readSignals(
   person: TriagePerson,
   signals: ReadonlyArray<ReadSignal>,
   s: Situation,
-): { signal: ReadSignal | null; setAside: boolean } {
+): { signal: ReadSignal | null; setAside: boolean; prior: ReadSignal | null } {
   const now = ms(s.now);
   const past = signals
     .map((sig, i) => ({ sig, i, t: ms(sig.at) }))
@@ -382,7 +382,10 @@ function readSignals(
   const ignored = (sig: ReadSignal) => person.selfReportUnreliable && sig.color === "green" && isFromSelf(sig);
   const usable = past.filter((sig) => !ignored(sig));
   const latest = past.at(-1);
-  return { signal: usable.at(-1) ?? null, setAside: latest !== undefined && ignored(latest) };
+  const signal = usable.at(-1) ?? null;
+  // 使う信号が受け入れ・搬送（出どころ staff）のとき、その前のいちばん新しい人の信号（案 11、T184）
+  const prior = signal?.source === "staff" ? (usable.slice(0, -1).findLast((x) => x.source !== "staff") ?? null) : null;
+  return { signal, setAside: latest !== undefined && ignored(latest), prior };
 }
 
 const isDevice = (c: ClockState) => c.clock.kind === "device";
@@ -421,6 +424,8 @@ type RuleInput = {
   signal: ReadSignal | null;
   /** 本人の緑を使わなかった（いちばん新しい信号が当てにしない本人の緑） */
   setAside: boolean;
+  /** 使う信号が受け入れ・搬送のとき、その前のいちばん新しい人の信号（案 11）。ほかは null */
+  prior: ReadSignal | null;
   states: ClockState[];
   hoursSinceDisaster: number;
   /** 確認が未確認の頼り先（表の入力の透析先・配達だけ。TABLE_DEPENDS）。重ねない */
@@ -462,6 +467,9 @@ function injuryWords(sig: ReadSignal | null): { answered: string[]; staff: strin
 
 /** Claude の分類から来た言葉の印。画面でも文書でもこの形で AI の出力と分かるようにする */
 const AI_CLASSIFIED_PREFIX = "録音の分類（AI）: ";
+/** 受け入れの前の赤を理由に添える言葉の頭（案 11）。搬送でも受け入れの前の答えなので「受入前」 */
+const BEFORE_ARRIVAL = "受入前 ";
+
 /** ケアマネが直した分類から来た言葉（人の判断なので AI の印を付けない） */
 const STAFF_CLASSIFIED_PREFIX = "分類（ケアマネ）: ";
 
@@ -688,6 +696,22 @@ export type Qualifier = Basis & {
 /** 理由に足す言葉。色は変えない。この順に「、」でつなぐ */
 export const QUALIFIERS: ReadonlyArray<Qualifier> = [
   {
+    id: "before_arrival",
+    when: "使う知らせが医療班・行政の受け入れ（搬送）で、その前のいちばん新しい人の信号が赤",
+    text: "受入前 本人が「けが」「動けない」",
+    origin: "案 11",
+    why: "受け入れで赤から緑・黄に下がると、ケアマネの一覧で下がった訳が読めない → 受け入れの前の答えを添え、受け入れたあとの様子を確かめる",
+    sourceIds: ["mhlw-bcp-2020"],
+    apply: (x) => {
+      if (!viaWord(x) || x.prior?.color !== "red") return null;
+      const { answered, staff } = injuryWords(x.prior);
+      const parts: string[] = [];
+      if (answered.length > 0) parts.push(`${WHO[x.prior.source]}が${answered.map((w) => `「${w}」`).join("")}`);
+      if (staff.length > 0) parts.push(`${STAFF_CLASSIFIED_PREFIX}${staff.join("・")}`);
+      return `${BEFORE_ARRIVAL}${parts.length > 0 ? parts.join("、") : `${WHO[x.prior.source]}が「無事じゃない」`}`;
+    },
+  },
+  {
     id: "ai_classified",
     when: "赤で、録音・自由文の分類（Claude）が けが・動けない を言った（答えとケアマネの分類にある言葉は重ねない）",
     text: "録音の分類（AI）: 動けない",
@@ -772,11 +796,12 @@ function uncheckedOf(person: TriagePerson): DependsOn[] {
 export function triage(entry: TriageEntry, situation: Situation): TriageResult {
   const { person } = entry;
   const states = clockStates(person, situation);
-  const { signal, setAside } = readSignals(person, [...entry.signals, ...(entry.arrivals ?? []).flatMap(arrivalSignals)], situation);
+  const { signal, setAside, prior } = readSignals(person, [...entry.signals, ...(entry.arrivals ?? []).flatMap(arrivalSignals)], situation);
   const input: RuleInput = {
     person,
     signal,
     setAside,
+    prior,
     states,
     hoursSinceDisaster: Math.max(0, (ms(situation.now) - ms(situation.disasterAt)) / HOUR_MS),
     unchecked: uncheckedOf(person),

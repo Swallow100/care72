@@ -347,6 +347,20 @@ describe("家族の画面に出す物", () => {
     for (const hidden of ["あしが", "酸素", "自由文", "印", "森", "木村", "至急", "要確認"]) expect(all).not.toContain(hidden);
   });
 
+  it("受入の知らせは件数を超えても残す（T184。「無事です」を何度も送っても「避難所で受け付けました」が消えない）", async () => {
+    await earthquake();
+    insertTimeline("p-01", "received", "medical", "かわなぎ小学校", at(1));
+    for (let i = 0; i < 10; i++) insertTimeline("p-01", "called", "care_manager", "電話", at(1.1 + i * 0.05));
+    const page = await pageOf(family());
+    const history = familyHistory(page, familyWriterOf(page, "c-01-1")!)!;
+    expect(history).toHaveLength(8);
+    const texts = history.map((h) => plainText(h.words));
+    // いちばん古いので最後。ほかの 7 件は新しい順のまま
+    expect(texts.at(-1)).toBe(plainText(familyHistory(page, familyWriterOf(page, "c-01-1")!, 99)!.at(-1)!.words));
+    expect(history.slice(0, 7).every((h, i, a) => i === 0 || Date.parse(a[i - 1]!.at) >= Date.parse(h.at))).toBe(true);
+    expect(texts.filter((t) => t.includes("電話"))).toHaveLength(7);
+  });
+
   it("同意の出し分け: 支援者への提供に同意していない加藤の弟には経過を出さない（null）。同意の未確認も出さない", async () => {
     await earthquake();
     const kato = family({ personId: "p-07", contactId: "c-07-1" });

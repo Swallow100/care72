@@ -33,6 +33,12 @@ export const metadata: Metadata = { title: DOCUMENT_LABELS.own };
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ print?: string | string[] }> };
 
 /** 上の帯の確かめの印（紙には出さない） */
+/**
+ * 上の帯の印の言葉（T184）。前の「手書き」「読み未登録」は何の数か読めなかった。
+ * write は紙で手で書き入れる欄（ケアマネの電話など）、reading はふりがなの付かなかった漢字（読みの表に無い地名・施設名）
+ */
+const OWN_CHECK_LABELS = { write: "要記入", reading: "ふりがな無" } as const;
+
 function Check({ label, items, data }: { label: string; items: readonly string[]; data: string }) {
   if (items.length === 0) return null;
   return (
@@ -80,8 +86,8 @@ export default async function OwnFormPage({ params, searchParams }: Props) {
           items={sheet.open.filter((o) => o.kind === "decide").map((o) => o.label)}
           data="decide"
         />
-        <Check label="手書き" items={sheet.open.filter((o) => o.kind === "write").map((o) => o.label)} data="write" />
-        <Check label="読み未登録" items={sheet.noReading} data="reading" />
+        <Check label={OWN_CHECK_LABELS.write} items={sheet.open.filter((o) => o.kind === "write").map((o) => o.label)} data="write" />
+        <Check label={OWN_CHECK_LABELS.reading} items={sheet.noReading} data="reading" />
         <Link href={qrHref} className="relative flex items-baseline gap-2 rounded px-1 text-sm" data-press data-qr-status={qr.status}>
           {qr.url && qr.expiresAt ? (
             <span className="text-muted">

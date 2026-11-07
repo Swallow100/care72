@@ -19,8 +19,11 @@ import {
   SHELTER_MAP_ZOOM,
   shelterNameIds,
   shelterTilesForView,
+  PLANNED_SAME_M,
+  withoutPlanned,
   type MapShelter,
 } from "./shelters.ts";
+import { distanceM } from "./route.ts";
 import { planPlaces } from "./side.ts";
 
 const HOME = { lat: 33.84, lng: 132.765 };
@@ -104,6 +107,16 @@ describe("2 種類を分ける", () => {
     const html = marks(SHELTER_MAP_ZOOM, [shelter("架空小学校", dest.at.lat, dest.at.lng)]);
     expect(html).not.toContain("data-map-shelter=");
     expect(html).toContain("data-map-dest=");
+  });
+
+  it("同じ名前でも計画の避難先から離れた避難所は出す（T184。名前と距離の両方で比べる）", () => {
+    // 約 100 m は同じ施設、約 800 m は別の施設
+    const near = shelter("架空小学校", dest.at.lat + 0.0009, dest.at.lng);
+    const far = shelter("架空小学校", dest.at.lat, dest.at.lng + 0.009);
+    expect(withoutPlanned([near, far], [dest]).map((s) => s.id)).toEqual([far.id]);
+    expect(distanceM(dest.at, near.at)).toBeLessThanOrEqual(PLANNED_SAME_M);
+    const html = marks(SHELTER_MAP_ZOOM, [near, far]);
+    expect(html.match(/data-map-shelter="/g) ?? []).toHaveLength(1);
   });
 });
 
