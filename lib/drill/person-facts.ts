@@ -823,7 +823,7 @@ export function placeWords(f: Pick<Facts, "place" | "plan">): string | null {
 const GO_WHY_WORDS: Readonly<Record<GoWhy, string>> = {
   plan: "計画に移る手段が無いか避難先が無い",
   blocked: "道が通れないか家の辺りが水につかっている",
-  helper: "動けないので、手伝う人か乗り物が来るまで移れない",
+  helper: "手伝う人か乗り物が来るまで移れない",
 };
 
 /**
@@ -845,7 +845,8 @@ export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">): strin
   if (p.by === "wandering") return "どこにいるか分かりません。";
   if (p.where === "home") return "家にいます。";
   if (p.where === "shelter") return "避難所にいます。";
-  return f.plan?.destination === "hospital" ? "病院にいます。" : "避難先にいます。";
+  // 病院と言うのは計画の手段か移送で計画の病院へ移った時だけ（連絡で分かっただけの「その他」は病院と言い切らない）
+  return (p.by === "plan" || p.by === "transport") && f.plan?.destination === "hospital" ? "病院にいます。" : "避難先にいます。";
 }
 
 /** 残りの時間の言い方（T141。コードが決める数。10 分・30 分・1 時間に丸める） */
@@ -906,18 +907,20 @@ export function factLines(f: Facts): string[] {
   const where = placeWords(f);
   // 時刻の言い方（T177）。時計が分かれば「16 時ごろ（3 時間前）」、分からなければ経過の数のまま
   const at = whenWordsOf(f);
+  // 「ごろ」を重ねない（時計の言い方は「ごろ」を持つ）
+  const about = (m: number) => (typeof f.startHour === "number" ? at(m) : `${at(m)}ごろ`);
   if (f.place && where) {
     out.push(
       f.place.by === "wandering"
         ? `いる所: ${where}（${at(f.place.at)}${PLACE_BY_WORDS.wandering}。まだ見つかっていない。家にいるとは言わない）`
-        : `いる所: ${where}（${at(f.place.at)}${PLACE_BY_WORDS[f.place.by ?? "turn"]}）${f.plan?.immobile && f.place.where === "home" ? "。ふだん自分で動けないので、手伝う人か乗り物が来るまで家にいる（家の外にいるとは言わない）" : ""}`,
+        : `いる所: ${where}（${at(f.place.at)}${PLACE_BY_WORDS[f.place.by ?? "turn"]}）${f.plan?.immobile && f.place.where === "home" ? "。手伝う人か乗り物が来るまで家にいる（家の外にいるとは言わない）" : ""}`,
     );
   }
   if (f.rideAfter !== undefined) out.push(`移送の車: ${at(f.rideAfter)}に来たが、もう${f.plan?.destination === "shelter" || !f.plan ? "避難所" : "移った先"}にいるので乗らない（「迎えの車で着いた」と言わない）`);
   if (f.going && f.place?.by !== "plan" && f.place?.by !== "transport") {
     out.push(
       f.going.can
-        ? `移動: ${at(f.going.at)}に避難先へ向かうと言った（計画の手段で ${at(f.going.at + GO_MINUTES)}ごろ着く）`
+        ? `移動: ${at(f.going.at)}に避難先へ向かうと言った（計画の手段で ${about(f.going.at + GO_MINUTES)}着く）`
         : `移動: ${at(f.going.at)}に避難先へ向かうと言ったが、${f.going.why === "blocked" ? blockedWords(f) : GO_WHY_WORDS[f.going.why ?? "plan"]}（まだ家。向かえていない理由を言う）`,
     );
   }
@@ -963,14 +966,14 @@ export function factLines(f: Facts): string[] {
       const r = d.remain;
       const s = f.plan?.spares.find((x) => x.category === d.category) ?? null;
       out.push(
-        `${d.label}: 停電で内蔵の電池で動いている。残り ${minuteText(d.dueAt - f.now)}（${at(d.dueAt)}ごろ切れる）${s ? `。切れたら${s.label}に替える${r?.total != null ? `（合わせた残り ${minuteText(r.total)}${s.assumed ? "、見込み" : ""}）` : "（予備の時間は分からない）"}` : "。予備は無い"}`,
+        `${d.label}: 停電で内蔵の電池で動いている。残り ${minuteText(d.dueAt - f.now)}（${about(d.dueAt)}切れる）${s ? `。切れたら${s.label}に替える${r?.total != null ? `（合わせた残り ${minuteText(r.total)}${s.assumed ? "、見込み" : ""}）` : "（予備の時間は分からない）"}` : "。予備は無い"}`,
       );
     }
     if (d.outAt !== null) {
       if (d.spare) {
         const spareOut = d.spare.outAt !== null && d.spare.outAt <= f.now;
         out.push(
-          `${d.label}: ${at(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}。残りを言う時は「予備に替えた」と添える）${spareOut ? `。予備も ${at(d.spare.outAt!)}に切れた（${cutSay(f)}）${d.down ? `。${DOWN_WORDS}` : ""}` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${at(d.spare.outAt)}ごろ切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
+          `${d.label}: ${at(d.outAt)}に切れ、計画どおり${d.spare.label}に替えた（替えたのは ${d.spare.by}。残りを言う時は「予備に替えた」と添える）${spareOut ? `。予備も ${at(d.spare.outAt!)}に切れた（${cutSay(f)}）${d.down ? `。${DOWN_WORDS}` : ""}` : d.spare.outAt !== null ? `。予備の残り ${minuteText(d.spare.outAt - f.now)}${d.spare.assumed ? "（見込み）" : ""}（${about(d.spare.outAt)}切れる。それより長く使えるとは言わない）` : "。予備の残りは分からない"}`,
         );
       } else if (d.down) {
         out.push(`${d.label}: ${at(d.outAt)}に切れた（${cutSay(f)}）。予備は無く、電源が届くか停電が戻るまで戻らない（${DOWN_WORDS}）`);
