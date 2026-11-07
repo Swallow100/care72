@@ -513,9 +513,9 @@ export const SCENES: Scene[] = [
 export const LINES: Line[] = [
   // 11/6 作者の絵コンテの書き込みで全体を組み直した。声の文は作者の文のまま（直したのは事実に合わせた所だけ）。N13・N14・N16・N26・N27・N29・N31 は外した（欠番。N16 と N31 は 3 分に収めるため作者の決め 11/6。N31 は終わりの画面の「ケア72」の一言として戻した 11/7）
   { id: "N01", at: 0.3, end: 4.7, ja: "突然ですが『個別避難計画』を知っていますか。", en: "Out of the blue: have you heard of an \"individual evacuation plan\"?" },
-  { id: "N02", at: 4.9, end: 15.7, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But only 15.1% have one." },
-  { id: "N03", at: 16, end: 26.8, ja: "ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。", en: "Care managers know their clients, but have no time to write the plans. And the plans themselves go unused." },
-  { id: "N05", at: 27, end: 35.4, ja: "独自アンケートでもケアマネジャー 4 人全員が計画を市町村に提出して終わりと答えました。", en: "In our own survey, all 4 care managers answered that the plan ends once it is handed to the city." },
+  { id: "N02", at: 4.9, end: 16.6, ja: "災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、対象の約 670 万人のうち、できているのは 15.1% だけ。", en: "It sets out who will help an older person living at home in a disaster, and how. But of about 6.7 million people it covers, only 15.1% have one." },
+  { id: "N03", at: 16.7, end: 26.8, ja: "ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。", en: "Care managers know their clients, but have no time to write the plans. And the plans themselves go unused." },
+  { id: "N05", at: 27, end: 35.4, ja: "独自アンケートでも、ケアマネジャー 4 人全員が、計画は市町村に出して終わりと答えました。", en: "In our own survey, all 4 care managers answered that the plan ends once it is handed to the city." },
   { id: "N06", at: 35.8, end: 42, ja: "楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。", en: "A plan that is easy to make and useful in a disaster is worth making. That was my thought." },
   { id: "N07", at: 42.2, end: 46.3, ja: "そこでケア72というアプリを作成しました。", en: "So I built an app called Care72." },
   { id: "N08", at: 46.5, end: 55.4, ja: "ケアマネジャーの災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。", en: "From the care manager's disaster planning to drills and the response in a disaster, Care72 does it all." },
@@ -525,7 +525,7 @@ export const LINES: Line[] = [
   { id: "N15", at: 82.2, end: 91.6, ja: "次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。", en: "Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client." },
   { id: "N17", at: 91.8, end: 101.5, ja: "72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の動きなど、さまざまな状況が起こります。", en: "In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves acting on their own." },
   { id: "N18", at: 105, end: 111.4, ja: "ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。", en: "Just like the real thing, the care manager can call, and arrange evacuation or power." },
-  { id: "N19", at: 111.5, end: 124.9, ja: "終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。", en: "At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device." },
+  { id: "N19", at: 111.5, end: 124.9, ja: "終わると Opus が対応を採点し、今回は山田ハナさんの酸素が間に合わなかったこと、連絡順の上の人から手を打つべきことを、出典付きで講評しました。", en: "At the end, Opus scores the response. This time, citing sources, it pointed out that Hana Yamada's oxygen ran short, and that the care manager should act from the top of the contact order." },
   { id: "N20", at: 125, end: 130.5, ja: "そして実際の発災時。地震が発生し災害モードに切り替えました。", en: "Then a real disaster. An earthquake hits, and disaster mode is on." },
   { id: "N21", at: 130.7, end: 135.6, ja: "利用者またはその家族はスマホで安否確認ができます。", en: "Clients or their families can check in from their phones." },
   { id: "N22", at: 135.8, end: 142.8, ja: "本人がボタンを押さない場合は AI 音声で質問して録音と状況把握に努めます。", en: "If the client doesn't press a button, an AI voice asks, and the app records to understand the situation." },

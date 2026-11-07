@@ -21,9 +21,9 @@
 | ID | 秒 | ナレーション | 英語の字幕（案） |
 | --- | --- | --- | --- |
 | N01 | 0:00.3–0:04.7 | 突然ですが『個別避難計画』を知っていますか。 | Out of the blue: have you heard of an "individual evacuation plan"? |
-| N02 | 0:04.9–0:15.7 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、できているのは 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But only 15.1% have one. |
-| N03 | 0:16–0:26.8 | ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。 | Care managers know their clients, but have no time to write the plans. And the plans themselves go unused. |
-| N05 | 0:27–0:35.4 | 独自アンケートでもケアマネジャー 4 人全員が計画を市町村に提出して終わりと答えました。 | In our own survey, all 4 care managers answered that the plan ends once it is handed to the city. |
+| N02 | 0:04.9–0:16.6 | 災害のとき、在宅の高齢者を誰がどう助けるかを決めておく計画です。でも、対象の約 670 万人のうち、できているのは 15.1% だけ。 | It sets out who will help an older person living at home in a disaster, and how. But of about 6.7 million people it covers, only 15.1% have one. |
+| N03 | 0:16.7–0:26.8 | ケアマネジャーは利用者のことは知っていますが、計画を書く時間がありません。また、計画自体を活かせていません。 | Care managers know their clients, but have no time to write the plans. And the plans themselves go unused. |
+| N05 | 0:27–0:35.4 | 独自アンケートでも、ケアマネジャー 4 人全員が、計画は市町村に出して終わりと答えました。 | In our own survey, all 4 care managers answered that the plan ends once it is handed to the city. |
 | N06 | 0:35.8–0:42 | 楽に作れて、災害でも役立つ計画なら、作る意味が出る、そう考えました。 | A plan that is easy to make and useful in a disaster is worth making. That was my thought. |
 | N07 | 0:42.2–0:46.3 | そこでケア72というアプリを作成しました。 | So I built an app called Care72. |
 | N08 | 0:46.5–0:55.4 | ケアマネジャーの災害対策計画づくりから訓練、発災時の対応までケア72一つで完結します。 | From the care manager's disaster planning to drills and the response in a disaster, Care72 does it all. |
@@ -33,7 +33,7 @@
 | N15 | 1:22.2–1:31.6 | 次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。 | Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client. |
 | N17 | 1:31.8–1:41.5 | 72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の動きなど、さまざまな状況が起こります。 | In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves acting on their own. |
 | N18 | 1:45–1:51.4 | ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。 | Just like the real thing, the care manager can call, and arrange evacuation or power. |
-| N19 | 1:51.5–2:04.9 | 終わると Opus がケアマネジャーの対応を詳しく講評、今回は山田ハナさんの酸素供給装置への対応が遅れたことを出典付きで指摘しました。 | At the end, Opus reviews the response in detail. This time, citing sources, it pointed out the late response to Hana Yamada's oxygen device. |
+| N19 | 1:51.5–2:04.9 | 終わると Opus が対応を採点し、今回は山田ハナさんの酸素が間に合わなかったこと、連絡順の上の人から手を打つべきことを、出典付きで講評しました。 | At the end, Opus scores the response. This time, citing sources, it pointed out that Hana Yamada's oxygen ran short, and that the care manager should act from the top of the contact order. |
 | N20 | 2:05–2:10.5 | そして実際の発災時。地震が発生し災害モードに切り替えました。 | Then a real disaster. An earthquake hits, and disaster mode is on. |
 | N21 | 2:10.7–2:15.6 | 利用者またはその家族はスマホで安否確認ができます。 | Clients or their families can check in from their phones. |
 | N22 | 2:15.8–2:22.8 | 本人がボタンを押さない場合は AI 音声で質問して録音と状況把握に努めます。 | If the client doesn't press a button, an AI voice asks, and the app records to understand the situation. |
