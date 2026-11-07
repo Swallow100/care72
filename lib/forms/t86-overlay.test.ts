@@ -382,8 +382,8 @@ describe.skipIf(!chrome)("架空の様式で通す: 白紙の PDF → 頁の画�
     expect(textIn("氏名", "本人")).toBe("山田 ハナ");
     expect(textIn("電話番号")).toBe("090-0000-0001");
     expect(textIn("住所")).toContain("かわなぎ町");
-    expect(textIn("避難先")).toBe("かわなぎ小学校");
-    expect(texts.find((t) => t.str.includes("かわなぎ小学校"))!.page).toBe(2);
+    expect(textIn("避難先")).toBe("福音小学校");
+    expect(texts.find((t) => t.str.includes("福音小学校"))!.page).toBe(2);
   }, 120_000);
 
   it("種の 10 人とも、明朝でもゴシックでも、字は欄の矩形からはみ出さない（字の幅の見積もりが実際の書体より狭くない）。別紙が無ければ 2 頁", async (ctx) => {
