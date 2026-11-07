@@ -2,8 +2,10 @@
 // 架空の欄と種の人で組み、紙の印と字を見る（原本の絵・評価の記録は使わない）。
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
+import type { InkBlob } from "./ink.ts";
+import { splitLoneMarks } from "./lone-mark.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
-import { checkReadResult, type FieldBox, type FormMapping, type LedgerItemKey } from "./mapping.ts";
+import { checkReadResult, type FieldBox, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
 import { buildOverlaySheet } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
@@ -140,6 +142,32 @@ describe("T181 2 「□なし □あり（　）」の括弧の中に値を書�
     ]);
     // 徒歩の人は 徒歩 の □ に印だけ
     expect(paper(m, "p-08")).toMatchObject({ marks: [0.2], texts: [], unplaced: [] });
+  });
+});
+
+describe("T181 5 □ を 1 つ読み落とした行の □ 1 つを分けるのは、□ と括弧の間の名前が 1 つの時だけ", () => {
+  const IMAGE = { w: 210, h: 297 };
+  const mark = (x: number): InkBlob => ({ x, y: 0.31, w: 0.016, h: 0.011, box: true });
+  const glyph = (x: number): InkBlob => ({ x, y: 0.31, w: 0.012, h: 0.011, box: false });
+  const rule = (x: number): InkBlob => ({ x, y: 0.3, w: 0.001, h: 0.03, box: false, line: true });
+  const near = (b: InkBlob): FieldBox => ({ x: b.x + 0.002, y: b.y + 0.001, w: 0.013, h: 0.01 });
+  const A = mark(0.3);
+  const B = mark(0.42);
+  const field = (over: Partial<MappingField>): MappingField => ({ id: "f0", page: 1, section: "住まい", label: "欄", position: "", shape: "text", options: [], item: null, removed: false, ai: null, ...over });
+  const lone = field({ id: "f1", label: "木造", shape: "check", item: "basic.housing.structure", box: near(A), ai: { item: "basic.housing.structure", confidence: "medium", reason: "r", box: near(A) } });
+  const bracket = field({ id: "f2", label: "その他（　）", box: { x: 0.545, y: 0.308, w: 0.13, h: 0.014 } });
+  const pages = (ink: InkBlob[]) => new Map([[1, { ink, image: IMAGE }]]);
+
+  it("「□木造 □鉄骨造 その他（　）」で 鉄骨造 の □ を読み落とした形は分けない（鉄骨造 の □ を その他 と呼ばない）", () => {
+    // 木造 / 鉄骨造 / その他 の字。その他 には □ が無い
+    const ink = [A, B, glyph(0.32), glyph(0.335), glyph(0.44), glyph(0.455), glyph(0.47), glyph(0.495), glyph(0.51), glyph(0.525), rule(0.2), rule(0.9)];
+    expect(splitLoneMarks([lone, bracket], pages(ink))).toEqual([lone, bracket]);
+  });
+
+  it("名前の字が 1 つの塊なら今までどおり分ける（T179 の形）", () => {
+    const ink = [A, B, glyph(0.32), glyph(0.335), glyph(0.44), glyph(0.455), glyph(0.47), rule(0.2), rule(0.9)];
+    const b = { ...bracket, box: { x: 0.49, y: 0.308, w: 0.13, h: 0.014 } };
+    expect(splitLoneMarks([lone, b], pages(ink))[0]).toMatchObject({ shape: "choice", options: ["木造", "その他"] });
   });
 });
 
