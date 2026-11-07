@@ -2,9 +2,10 @@
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
 import { packInk, type InkBlob } from "./ink.ts";
-import { splitLoneMarks } from "./lone-mark.ts";
+import { SPLIT_ITEMS, splitLoneMarks } from "./lone-mark.ts";
 import { buildMappedSheet } from "./mapped-sheet.ts";
-import { checkReadResult, type FieldBox, type FormMapping, type MappingField } from "./mapping.ts";
+import { checkReadResult, type FieldBox, type FormMapping, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { ITEM_CODES } from "./option-values.ts";
 import { buildOverlaySheet } from "./overlay-sheet.ts";
 import type { PageImage } from "./page-images.ts";
 import { seedRows } from "./print-harness.ts";
@@ -53,6 +54,10 @@ describe("□ 1 つに読んだ選択肢の並びを分ける", () => {
     expect(out[0]).toMatchObject({ shape: "choice", options: ["戸建", "その他"] });
   });
 
+  it("手段の並びも同じ", () => {
+    expect(splitLoneMarks([lone({ label: "徒歩", item: "evacuation.nearestMeans" }), bracket()], page())[0]).toMatchObject({ shape: "choice", options: ["徒歩", "その他"] });
+  });
+
   it("読み直した頁だけに当てる（only）", () => {
     expect(splitLoneMarks([lone(), bracket()], page(), new Set([2]))[0].shape).toBe("check");
   });
@@ -79,6 +84,12 @@ describe("□ 1 つに読んだ選択肢の並びを分ける", () => {
     it("□ の名前が項目の種類に当たらない", () => same([lone({ label: "木の家" }), bracket()]));
     it("□ の名前が「その他」", () => same([lone({ label: "その他" }), bracket()]));
     it("項目が値の表を持たない", () => same([lone({ label: "木造", item: "notes.other" }), bracket()]));
+    it("有無を持つ項目は □ 1 つで意味がある（自立の人の「その他」に印を付けない）", () => {
+      same([lone({ label: "歩行が困難", item: "care.walking" }), bracket()]);
+      same([lone({ label: "独居", item: "basic.household" }), bracket()]);
+      same([lone({ label: "土砂", item: "evacuation.hazards" }), bracket()]);
+      same([lone({ label: "声掛け", item: "evacuation.support" }), bracket()]);
+    });
     it("種類ごとの □ の項目（読み取りの決まり 12 の例外）", () => same([lone({ label: "在宅酸素", item: "medical.devices" }), bracket()]));
     it("字の欄は当たらない", () => same([lone({ shape: "text" }), bracket()]));
     it("外した欄は当たらない", () => same([lone({ removed: true }), bracket()]));
@@ -90,6 +101,26 @@ describe("□ 1 つに読んだ選択肢の並びを分ける", () => {
     const out = splitLoneMarks([choice, lone(), bracket()], page([...INK, left]));
     expect(out[0]).toEqual(choice);
     expect(out[1].options).toEqual(["木造", "その他"]);
+  });
+});
+
+describe("分ける項目の表", () => {
+  const onFor = (item: LedgerItemKey, label: string) =>
+    SEED_PEOPLE.some((p) => {
+      const mapping: FormMapping = { title: "架空", issuer: "", pages: 1, fields: [field({ id: "f1", label, shape: "check", item, box: near(A) })] };
+      const cell = buildMappedSheet(seedRows(p), mapping, { today: "2026-11-07", officeName: "デモ事業所" }).pages[0].sections[0].rows[0].cell;
+      return cell.kind === "choice" && cell.options[0].on;
+    });
+
+  it("分ける項目は、値のある種の人でも □ 1 つでは印にならない", () => {
+    for (const item of SPLIT_ITEMS) {
+      for (const c of ITEM_CODES[item] ?? []) expect([item, c.label, onFor(item, c.label)]).toEqual([item, c.label, false]);
+    }
+  });
+
+  it("ほかの値の表の項目は、種の人のだれかで □ 1 つに印が付く（新しい項目を足したらどちらかを決める）", () => {
+    const others = (Object.keys(ITEM_CODES) as LedgerItemKey[]).filter((k) => !SPLIT_ITEMS.has(k) && k !== "basic.household");
+    expect(others.filter((item) => !(ITEM_CODES[item] ?? []).some((c) => onFor(item, c.label)))).toEqual([]);
   });
 });
 

@@ -18,7 +18,7 @@ import { allowedTwice, bracketOwner, bracketBase, extraItemFields } from "./form
 import { ledgerItem, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
 
 /** □ ごとに同じ項目を当てる種類の項目（読み取りの決まり 12 の例外。紙は □ の名前と台帳の種類を照らす） */
-export const PER_MARK_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["medical.devices", "medical.medications"]);
+const PER_MARK_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["medical.devices", "medical.medications"]);
 
 const area = (b: FieldBox | null | undefined) => (b ? b.w * b.h : 0);
 const isText = (f: MappingField) => f.shape === "text" || f.shape === "lines";

@@ -4,7 +4,8 @@
 // 項目は同じなので様式の当たりは当たりのまま数え、紙は □ 1 つの欄の値が何の印にもならず、値のある入力の全部で空いた。読み取りの決まり 2 の形に後から寄せる。
 //
 // 全部そろった時だけ分ける（確かでなければ今のまま。違う欄に書くくらいなら空ける）:
-// - 欄は □ 1 つで、項目が値の表を持ち（lib/forms/option-values.ts）、□ の名前が項目の種類の 1 つ（「その他」「なし」は種類でない）。種類ごとの □ の項目（読み取りの決まり 12 の例外）は除く
+// - 欄は □ 1 つで、項目が種類を分けるだけの項目（SPLIT_ITEMS）で、□ の名前がその種類の 1 つ（「その他」「なし」は種類でない）。
+//   有無を持つ項目（「□歩行が困難」「□独居」「□洪水」）の □ は 1 つで意味があり（印が付く）、「その他（　）」は別の話のことがある（分けると自立の人の「その他」に印が付く）
 // - 同じ頁に同じ項目の欄がほかに無い（外した欄も数える。□ と括弧の組はそちらの決まりで動いている）
 // - 同じ行で、□ の左右を縦の罫線かほかの欄の枠で切った範囲に、印刷の □ が自分と、どの欄にも読まれていない □ の 2 つだけ
 // - 読まれていない □ は自分より右で、範囲の右の端の欄が項目なしの括弧の欄（「その他（　）」）。その名前が □ の名前で、□ と括弧の間に名前の字が刷ってある
@@ -14,10 +15,27 @@
 
 import { bracketBase } from "./form-shape.ts";
 import type { InkBlob } from "./ink.ts";
-import { clean, LIMITS, type FieldBox, type MappingField } from "./mapping.ts";
-import { codeOfOption, hasCodes, NONE_CODE, OTHER_CODE } from "./option-values.ts";
-import { PER_MARK_ITEMS } from "./read-settle.ts";
+import { clean, LIMITS, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { codeOfOption, NONE_CODE, OTHER_CODE } from "./option-values.ts";
 import type { TrailingPage } from "./trailing-field.ts";
+
+/**
+ * 種類を分けるだけの項目。値に有無も種類の照らしも無く（lib/forms/mapped-sheet.ts の ITEM_VALUES の flag・kinds が無い）、□ 1 つの欄は印にならない。
+ * 世帯（basic.household）も印にならないが入れない。「□独居」は要配慮者の区分の □ の並びに混ざり（前の回の答えにある形）、「その他（　）」が世帯の話と限らない。
+ * 値の表のある項目と揃っているかは lib/forms/t179.test.ts が種の人で確かめる
+ */
+export const SPLIT_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>([
+  "basic.sex",
+  "basic.housing.structure",
+  "basic.housing.type",
+  "evacuation.transport",
+  "evacuation.destination2Means",
+  "evacuation.nearestMeans",
+  "emergency1.relation",
+  "emergency2.relation",
+  "supporter1.relation",
+  "supporter2.relation",
+]);
 
 /** 括弧の前の名前の字 1 字あたりの幅の上限（mm）。これより離れた括弧は □ の名前の括弧と見ない */
 const NAME_CHAR_MM = 7;
@@ -95,7 +113,7 @@ function splitOne(f: MappingField, fields: readonly MappingField[], ink: readonl
  */
 export function splitLoneMarks(fields: readonly MappingField[], pages: ReadonlyMap<number, TrailingPage>, only?: ReadonlySet<number>): MappingField[] {
   return fields.map((f) => {
-    if (f.removed || f.shape !== "check" || !f.box || !f.item || !hasCodes(f.item) || PER_MARK_ITEMS.has(f.item) || !namesKind(f)) return f;
+    if (f.removed || f.shape !== "check" || !f.box || !f.item || !SPLIT_ITEMS.has(f.item) || !namesKind(f)) return f;
     if (only && !only.has(f.page)) return f;
     if (fields.some((g) => g !== f && g.page === f.page && g.item === f.item)) return f;
     const page = pages.get(f.page);
