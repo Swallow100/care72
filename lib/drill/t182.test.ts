@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from "vitest";
 import { SEED_PEOPLE } from "../../seed/people.ts";
-import { floodDepthOf, foldTick, initialState, timeOf, type DrillTurn } from "./engine.ts";
+import { advance, floodDepthOf, foldTick, initialState, timeOf, type DrillTurn, type PersonaInput } from "./engine.ts";
+import { DRILL_END_MINUTE } from "./clock.ts";
+import type { DirectorEvent } from "./incident-types.ts";
 import { homeOf } from "./comms.ts";
 import { createClockHooks } from "./hooks.ts";
 import { carryMoved, dropRoadSlips, factsOf, placeOfState, placeReplyOf, planOf } from "./person-facts.ts";
@@ -128,5 +130,32 @@ describe("4. 遅れて当たった道の出来事の門と浸水の区域", () =
   it("家を写していない訓練の深さは分からない、区域の無い家は null", () => {
     expect(floodDepthOf(undefined, ID)).toBeUndefined();
     expect(floodDepthOf({ [ID]: { zones: [], town: null, landline: true, mobile: false } }, ID)).toBeNull();
+  });
+});
+
+describe("5. 72 時間の近くで次へ回した監督の出来事", () => {
+  const P = "p-04";
+  const start = () => initialState("earthquake", SEED_PEOPLE.map((p) => p.person.id), "2026-11-07T01:00:00.000Z", { clock: true });
+  const wander: DirectorEvent = { inject: "wandering", person: P, text: "本人が家の外へ出て行き先が分からない", ai: true };
+  const hooks = {
+    director: async () => [wander],
+    persona: async (input: PersonaInput): Promise<DrillTurn[]> => (input.person === P ? [turnOf(P, input.hour, { source: "supporter", saying: "様子を見ました。" })] : []),
+  } as never;
+
+  it("回す時刻を 72 時間で切り、72 時間の区切りで当たる", async () => {
+    const first = await advance(start(), 0, {} as never, { policy: "clock" } as never);
+    const a = await advance(first!.state, DRILL_END_MINUTE - 30, hooks, { policy: "clock" } as never);
+    expect(a!.state.world.scheduled?.map((s) => s.at)).toEqual([DRILL_END_MINUTE]);
+    const b = await advance(a!.state, DRILL_END_MINUTE, { persona: async () => [] } as never, { policy: "clock" } as never);
+    expect(b!.tick.finished).toBe(true);
+    expect(b!.tick.incidents.some((e) => e.person === P && e.change.kind === "mark")).toBe(true);
+    expect(b!.state.world.scheduled ?? []).toEqual([]);
+  });
+
+  it("72 時間の区切りで回す物は残さない（次の区切りが無い）", async () => {
+    const first = await advance(start(), 0, {} as never, { policy: "clock" } as never);
+    const b = await advance(first!.state, DRILL_END_MINUTE, hooks, { policy: "clock" } as never);
+    expect(b!.tick.finished).toBe(true);
+    expect((b!.state.world.scheduled ?? []).filter((s) => s.at >= DRILL_END_MINUTE)).toEqual([]);
   });
 });

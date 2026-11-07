@@ -1102,12 +1102,15 @@ export async function advance(
     const late = screenIncidents(world, lateRaw.filter((e) => !heldRaw.includes(e)), { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
     world = late.world;
     book = tallyGate(book, "director", [...late.ruled, ...held.ruled].map((r) => r.rule));
-    if (held.kept.length > 0) {
+    // 回す時刻は 72 時間で切る（T182。前は 71 時間を過ぎた区切りで回すと 72 時間を越え、当たらないまま終わった）。72 時間の区切りで回す物は次が無いので回さず捨てる
+    // （当てると同じ時刻の「家にいます」と並ぶ。T178）
+    const holdAt = Math.min(to + SAME_CUT_HOLD_MINUTES, DRILL_END_MINUTE);
+    if (held.kept.length > 0 && holdAt > to) {
       book = {
         ...book,
         scheduled: [
           ...(book.scheduled ?? []),
-          ...held.kept.map((e) => ({ at: to + SAME_CUT_HOLD_MINUTES, change: e.change, text: e.text, by: "director" as const, ai: e.ai, ...(e.person ? { person: e.person } : {}), ...(e.inject ? { inject: e.inject } : {}) })),
+          ...held.kept.map((e) => ({ at: holdAt, change: e.change, text: e.text, by: "director" as const, ai: e.ai, ...(e.person ? { person: e.person } : {}), ...(e.inject ? { inject: e.inject } : {}) })),
         ],
       };
     }
