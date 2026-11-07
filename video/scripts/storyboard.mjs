@@ -1,7 +1,7 @@
 // 絵コンテ表を作る。絵（shot）ごとに静止画を 1 枚書き出し、秒・何を映すか・声の文・録画の状態と並べた 1 枚のページにする。
 // node scripts/storyboard.mjs <出す場所>     例: node scripts/storyboard.mjs out/storyboard
 // 出す物: <出す場所>/index.html（scripts/storyboard-page.html に表の中身を入れた物）と img/<絵の鍵>.jpg（幅 960）。
-// 作者はこのページを Artifact で見て、絵ごとの欄に直しを書く（Artifact の db の notes に入り、動画のセッションが読む）。
+// 作者はこのページを Artifact で見て、絵ごとの欄に直しを書く（Artifact の db の notes に入り、動画の作業が読む）。
 // 撮り直したら流し直して、同じ Artifact に出し直す。直しの鍵は絵の始まりの秒なので、秒を動かした絵の直しは前の秒の鍵に残る。
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -48,7 +48,7 @@ function recordingState(id, from) {
   return { id, name: RECORDINGS[id] ?? "", state: "wait", who };
 }
 
-const GRAPHIC = { title: "題名", text: "文字", plate: "名札", ring: "72 時間の輪", number: "数字", bars: "棒", memo: "メモの線画", rules: "ルールの表", quote: "一言", end: "終わりの画面" };
+const GRAPHIC = { title: "題名", text: "文字", plate: "名前の帯", ring: "72 時間の輪", number: "数字", bars: "棒", memo: "メモの線画", rules: "ルールの表", quote: "一言", end: "終わりの画面" };
 
 const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 

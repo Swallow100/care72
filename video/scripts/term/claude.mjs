@@ -63,6 +63,8 @@ export function findClaude() {
 const BUSY = /esc to interrupt|esc to cancel/i;
 /** 使える量の上限の知らせ（11/5 の 1 回目は「You've hit your weekly limit · resets Nov 6, 7am (Asia/Tokyo)」で止まった） */
 const LIMIT = /hit your (weekly |daily |session )?limit|limit · resets|usage limit reached/i;
+/** 契約を使えない知らせ（11/6 7:15 は「Claude Code can't use your Claude subscription, usually because a payment is past due」で止まった） */
+const NO_PLAN = /can't use your Claude subscription|payment is past due|Invalid API key|Please run \/login/i;
 /** 選ぶ窓（信頼の確認・上限の選択・許しの確かめなど） */
 const DIALOG = /Enter to confirm|Do you trust|What do you want to do\?/;
 
@@ -144,6 +146,10 @@ async function main() {
       const screen = s.screen();
       if (LIMIT.test(all)) {
         failed = "Claude の使える量の上限（画面の知らせのとおり、戻るまで撮れない）";
+        break;
+      }
+      if (NO_PLAN.test(all)) {
+        failed = "端末の claude の資格で契約を使えない（支払いの期限切れ・ログイン切れの知らせ）";
         break;
       }
       while (pending.length && pending[0].re.test(all)) s.mark(pending.shift().label);

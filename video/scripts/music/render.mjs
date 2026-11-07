@@ -17,7 +17,7 @@ const which = (process.argv[2] ?? "").toUpperCase();
 const here = join(ROOT, "scripts", "music");
 const file = readdirSync(here).find((f) => f.startsWith(`${which}-`) && f.endsWith(".mjs"));
 if (!file) {
-  console.error("使い方: node scripts/music/render.mjs <A|B|C|D|T>");
+  console.error("使い方: node scripts/music/render.mjs <A|B|C|D|E|T>");
   process.exit(2);
 }
 const outDir = join(ROOT, "out", "music");
@@ -25,9 +25,9 @@ mkdirSync(outDir, { recursive: true });
 
 // 台本の区切り（秒は動画の頭から）。曲の山はここに合わせる
 const SPEC = [
-  ["問いかけ", 0], ["気づき", 25.2], ["題名", 32.6], ["3 つ", 38], ["道具", 46], ["訓練", 74], ["着信", 88], ["着信の後", 93],
-  ["発災時", 108], ["並び替え", 116], ["並び替えの後", 121], ["録音", 126], ["録音の後", 130], ["作り方", 150], ["数字と声", 163],
-  ["締め", 172.5], ["ロゴ", 178.3], ["終わり", 180],
+  ["問いかけ", 0], ["理由", 16.7], ["気づき", 35.6], ["題名", 42.1], ["3 つ", 46.4], ["計画", 55.6], ["訓練", 81.9], ["着信", 99.5], ["着信の後", 105],
+  ["発災時", 124.7], ["録音", 140.76], ["録音の後", 142.9], ["山田の行", 148.7], ["山田の行の後", 150.6], ["使い分け", 162.2],
+  ["締め", 165.2], ["終わりの画面", 177.4], ["終わり", 180],
 ];
 
 // 曲の区間の名前（どの案も同じ名前で区間を切る）
@@ -35,7 +35,7 @@ const LABEL = {
   intro1: "問いかけ", intro2: "課題", rise: "気づきの盛り上がり", title: "題名", pillars: "3 つ（計画・訓練・発災時）",
   plan: "道具: 計画", drill: "道具: 訓練", call: "着信（息をつく）", drill2: "訓練の続き", dis1: "発災時",
   emph2: "並び替え（息をつく）", dis2: "発災時（電話）", emph3: "録音（息をつく）", dis3a: "発災時（ルール・詳細）",
-  dis3b: "声のない所へ（明るく）", receive: "受入（長調に戻る）", claude: "作り方", numbers: "数字と声", closing: "締め", end: "ロゴ",
+  dis3b: "声のない所へ（明るく）", receive: "受入（長調に戻る）", claude: "使い分け", numbers: "数字と声", closing: "締め", end: "ロゴ",
 };
 
 // 動画の音楽の音量（src/Video.tsx の musicVolume と同じ形。timeline.ts は読むだけ）

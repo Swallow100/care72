@@ -1,5 +1,5 @@
 // 3 本立て（計画・訓練・発災時）の円柱。3 つの録画の窓を、ゆるい円柱の外側の面に 38 度ずつ並べ、
-// 声がそれぞれの名前を言う所で円柱を回して、その窓を正面に持ってくる（作者の頼み 11/5「円柱状にくるくる回る、チープじゃなく」）。
+// 声がそれぞれの名前を言う所で円柱を回して、その窓を正面に持ってくる（作者の頼み 11/5）。
 // チープに見せないための決まり:
 // - 閉じた三角柱（120 度ずつ）ではなく、半径 1300px のゆるい弧。正面の窓は平らに、両隣は舞台の端に少し見える
 // - 遠近は 2600px（小さいと魚眼になる）。回す動きは ease-in-out の 16 コマで、行き過ぎて戻らない
@@ -129,7 +129,8 @@ export const Carousel: React.FC<{ items: CarouselItem[]; marks: number[]; durati
                     opacity,
                   }}
                 >
-                  <Framed id={it.id} assets={assets} maxWidth={PANEL_W} maxHeight={PANEL_H} from={it.from} duration={duration} note={note} delay={0} push={false} />
+                  {/* 2 つ目からは、回りきって正面に来てから from 秒を流す（回っている間は止めておく） */}
+                  <Framed id={it.id} assets={assets} maxWidth={PANEL_W} maxHeight={PANEL_H} from={it.from} duration={duration} note={note} delay={0} push={false} hold={i === 0 ? 0 : Math.max(0, at[i] - LEAD + TURN)} />
                 </div>
               );
             })}

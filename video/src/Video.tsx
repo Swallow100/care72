@@ -7,7 +7,7 @@ import { type Assets, audioPath, useAssets } from "./assets";
 import { GroundProvider, usePalette } from "./ground";
 import { Footage } from "./parts/Footage";
 import { Framed, framedSize } from "./parts/Frame";
-import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Plate, Rules, Share, Stage, TextCard, Title } from "./parts/Graphics";
+import { BigNumber, Compare, EndCard, Flow, Memo, Models, Quote, Plate, Rules, Share, Stage, Survey, TextCard, Title } from "./parts/Graphics";
 import { Carousel, carouselHead } from "./parts/Carousel";
 import { Kinetic, type KineticWord } from "./parts/Kinetic";
 import { LogoClock } from "./parts/LogoClock";
@@ -54,11 +54,16 @@ const REPO = "github.com/Swallow100/care72";
 function peopleShare(value: string, part: string, whole: string) {
   const m = /(\d+)\s*人中\s*(\d+)\s*人/.exec(value);
   if (!m) return { hero: value, share: 0, part, whole };
-  return { hero: `${m[2]} 人`, share: Number(m[2]) / Number(m[1]), part, whole: `答えた ${m[1]} 人` };
+  return { hero: `${m[2]} 人`, share: Number(m[2]) / Number(m[1]), part, whole: whole || `答えた ${m[1]} 人` };
+}
+
+/** 「4 人中 4 人」の答えた人数 */
+function peopleTotal(value?: string): number {
+  return Number(/(\d+)\s*人中/.exec(value ?? "")?.[1] ?? 1) || 1;
 }
 
 /** 3 つの紙面の名前（F1。S4 の flow） */
-const FLOW_NAMES = ["松山市の様式", "本人の 1 枚", "医療班の要約"];
+const FLOW_NAMES = ["松山市の様式", "本人保管書類", "医療班の要約"];
 
 /** 文字だけの面（split の中で録画の番号が空の所）。sub を「・」で分けて 1 行ずつ出す */
 const WordsPanel: React.FC<{ width: number; height: number; text: string; delay?: number; bg?: { id: string; count: number } }> = ({ width, height, text, delay = 0, bg }) => {
@@ -111,7 +116,9 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
   const ids = shot.footages ?? [];
   // beats があれば見出しと録画を声に合わせて 1 つずつ出す（S2 の「計画・訓練・発災時」）
   const delays = ids.map((_, i) => (shot.beats?.[i] !== undefined ? f(shot.beats[i]) : i * STAGGER));
-  const gap = 56;
+  const cross = !!shot.cross && ids.length === 2;
+  const gap = cross ? 28 : 56;
+  const CROSS_W = 130;
   // 話の段（青地）の見出しは 1 段大きく（見出しそのものが話の強調）
   const headingSize = p.bg === COLOR.blue ? TYPE.h1 : TYPE.h2;
   const heading = shot.lines?.length ? headingSize + 20 : 0;
@@ -122,7 +129,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
   const textW: number[] = ids.map((id) => (!id && words ? TEXT_W : 0));
   const phoneW = ids.map((id) => (id ? framedSize(id, 10000, H) : null)).map((s) => (s?.phone ? s.width : 0));
   const windows = ids.filter((id, i) => phoneW[i] === 0 && textW[i] === 0).length;
-  const restW = LAYOUT.stage.width - phoneW.reduce((a, b) => a + b, 0) - textW.reduce((a, b) => a + b, 0) - gap * (ids.length - 1);
+  const restW = LAYOUT.stage.width - phoneW.reduce((a, b) => a + b, 0) - textW.reduce((a, b) => a + b, 0) - gap * (ids.length - 1) - (cross ? CROSS_W + gap : 0);
   const eachW = windows ? restW / windows : 0;
   return (
     <Stage row gap={gap}>
@@ -135,7 +142,7 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
           );
         }
         const size = id ? framedSize(id, phoneW[i] || eachW, H) : { width: eachW, height: Math.round((eachW * 9) / 16) + LAYOUT.windowBar };
-        return (
+        const panel = (
           <div key={`${id}-${i}`} style={{ width: size.width, display: "flex", flexDirection: "column", alignItems: "center" }}>
             {shot.lines?.[i] ? (
               <div style={{ fontSize: headingSize, fontWeight: 600, marginBottom: 20, ...rise(frame, delays[i]) }}>
@@ -166,8 +173,37 @@ const Split: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ sho
             )}
           </div>
         );
+        return cross && i === 1 ? (
+          <React.Fragment key="cross">
+            <CrossArrow at={delays[1]} width={CROSS_W} top={heading} />
+            {panel}
+          </React.Fragment>
+        ) : (
+          panel
+        );
       })}
     </Stage>
+  );
+};
+
+/** 左から右への矢印と、真ん中の赤い ×（知っているのに書けていない） */
+const CrossArrow: React.FC<{ at: number; width: number; top: number }> = ({ at, width, top }) => {
+  const frame = useCurrentFrame();
+  const p = usePalette();
+  const draw = progress(frame, at - 6, 10);
+  const x = progress(frame, at + 2, 8);
+  const c = 26;
+  return (
+    <div style={{ width, alignSelf: "stretch", paddingTop: top, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <svg width={width} height={80} viewBox={`0 0 ${width} 80`} style={{ overflow: "visible" }}>
+        <line x1={4} y1={40} x2={4 + (width - 22) * draw} y2={40} stroke={p.fg} strokeWidth={5} strokeLinecap="round" />
+        <path d={`M ${width - 22} 26 L ${width - 4} 40 L ${width - 22} 54`} fill="none" stroke={p.fg} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={draw >= 1 ? 1 : 0} />
+        <g opacity={x} transform={`translate(${width / 2} 40) scale(${0.6 + 0.4 * x})`}>
+          <circle r={c + 6} fill={COLOR.urgent} />
+          <path d={`M ${-c / 2} ${-c / 2} L ${c / 2} ${c / 2} M ${c / 2} ${-c / 2} L ${-c / 2} ${c / 2}`} stroke="#fff" strokeWidth={6} strokeLinecap="round" />
+        </g>
+      </svg>
+    </div>
   );
 };
 
@@ -212,7 +248,7 @@ const Backdrop: React.FC<{ shot: Shot; assets: Assets; duration: number }> = ({ 
  * 録画の右下に重ねる数の面（声は足さず、字だけ。S6 の医療班の所のアンケートの問 7）。面の色は地の上で目立つ色（白地では青）、字はその逆。
  * 出るときは下から上がり、出たら止まる（跳ねない）。録画の大事な所（左の紙面）を隠さないよう右下に置く
  */
-const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: number; height: number } }> = ({ stat, inset }) => {
+const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: number; height: number; phone?: boolean } }> = ({ stat, inset }) => {
   const frame = useCurrentFrame();
   const p = usePalette();
   const S = LAYOUT.stage;
@@ -221,7 +257,8 @@ const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: numb
       style={{
         // 舞台（Stage）の中の位置。録画の窓（舞台の真ん中）の右下の角から 28px 内に重ねる
         position: "absolute",
-        right: (S.width - inset.width) / 2 + 28,
+        // スマホの録画は画面に重ねず、スマホの右の空いた所に（11/6）
+        right: inset.phone ? (S.width - inset.width) / 2 - 600 - 56 : (S.width - inset.width) / 2 + 28,
         bottom: (S.height - inset.height) / 2 + 28,
         width: 600,
         boxSizing: "border-box",
@@ -240,12 +277,13 @@ const StatNote: React.FC<{ stat: NonNullable<Shot["stat"]>; inset: { width: numb
           <div key={r}>{r}</div>
         ))}
       </div>
-      <div style={{ fontSize: TYPE.h1, fontWeight: 600, lineHeight: 1.1, marginTop: 6 }}>{stat.value}</div>
+      {stat.value ? <div style={{ fontSize: TYPE.h1, fontWeight: 600, lineHeight: 1.1, marginTop: 6 }}>{stat.value}</div> : null}
     </div>
   );
 };
 
 const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next?: Shot }> = ({ shot, assets, entryDelay = 0, next }) => {
+  const frame = useCurrentFrame();
   const duration = f(shot.end) - f(shot.at);
   const S = LAYOUT.stage;
   let body: React.ReactNode = null;
@@ -331,6 +369,7 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
           markAt={markAt}
           sweep={sweep}
           to={next?.kind === "carousel" && next.cutIn ? carouselHead(next.lines ?? []).mark : undefined}
+          plain={!words.length}
         >
           {words.length ? <Kinetic words={words} align="left" marker={shot.marker} /> : null}
         </LogoClock>
@@ -341,11 +380,22 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
       body = (
         <>
           <Backdrop shot={shot} assets={assets} duration={duration} />
-          {shot.value?.includes("→") ? (
+          {shot.survey ? (
+            <Survey
+              question={shot.survey.question}
+              rows={shot.survey.rows}
+              total={peopleTotal(shot.value)}
+              whole={shot.sub ?? ""}
+              land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
+              lead={slotWord(shot, assets, "lead")}
+              marker={shot.marker}
+            />
+          ) : shot.value?.includes("→") ? (
             <Compare value={shot.value} labels={[shot.lines?.[0] ?? "", shot.lines?.[1] ?? ""]} sub={shot.sub} lead={slotWord(shot, assets, "lead")} marks={markFrames(shot, assets)} />
           ) : shot.value?.includes("人中") ? (
             <Share
               {...peopleShare(shot.value, shot.lines?.[0] ?? "", shot.sub ?? "")}
+              extra={shot.lines?.[1]}
               land={shot.beats?.[0] !== undefined ? f(shot.beats[0]) : undefined}
               lead={slotWord(shot, assets, "lead")}
               tail={slotWord(shot, assets, "tail")}
@@ -399,7 +449,18 @@ const ShotView: React.FC<{ shot: Shot; assets: Assets; entryDelay?: number; next
     case "models":
       body = (
         <Models counters={shot.lines}>
-          <Cycle ids={shot.footages ?? []} assets={assets} duration={duration} label={shot.label} />
+          {shot.footages?.length ? (
+            <Cycle ids={shot.footages} assets={assets} duration={duration} label={shot.label} />
+          ) : shot.sub ? (
+            // 端末の録画を外した形（11/6）: 右に作り方を字で
+            <div style={{ width: 640, display: "flex", flexDirection: "column", gap: 18 }}>
+              {shot.sub.split("／").map((x, i) => (
+                <div key={x} style={{ fontSize: i === 0 ? TYPE.h1 : TYPE.h2, fontWeight: 600, lineHeight: 1.2, ...rise(frame, 6 + i * STAGGER) }}>
+                  {x}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </Models>
       );
       break;
@@ -510,12 +571,13 @@ const groundChanges = (scene: Scene): boolean => {
  * その段の最初の録画は、名前が帯の近くまで縮んでから上がる（大きな名前と録画を重ねない）
  */
 const FLY_SCENES = new Set(["S4", "S5", "S6"]);
-const FLY = { in: 10, hold: 6, fly: 14 };
+// hold は線の絵が描き終わるのを見せる間（11/6 に絵を足して 6 → 18 コマ）
+const FLY = { in: 10, hold: 18, fly: 14 };
 const FLY_END = FLY.in + FLY.hold + FLY.fly;
 const titleStart = (scene: Scene): number => (groundChanges(scene) ? 8 : 4);
 const entryDelay = (scene: Scene): number => titleStart(scene) + FLY_END - 3;
 
-const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) => {
+const FlyTitle: React.FC<{ title: string; local: number; scene?: string }> = ({ title, local, scene }) => {
   const p = usePalette();
   const H = LAYOUT.header;
   const size = TYPE.display;
@@ -551,7 +613,59 @@ const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) 
       }}
     >
       {title}
+      {scene ? (
+        <div style={{ position: "absolute", left: "50%", bottom: "100%", marginBottom: 28, transform: "translateX(-50%)", opacity: 1 - move }}>
+          <SceneIcon scene={scene} local={local} />
+        </div>
+      ) : null}
     </div>
+  );
+};
+
+/**
+ * 段の頭の線の絵（作者の頼み 11/6）。線を引いていくように描く（生成の絵は使わない）。
+ * 計画 = 紙と項目が埋まる、訓練 = 時計の針が回る、発災時 = スマホに安否の波
+ */
+const SceneIcon: React.FC<{ scene: string; local: number }> = ({ scene, local }) => {
+  const p = usePalette();
+  const draw = (i: number) => progress(local, 2 + i * 4, 10);
+  const len = 400;
+  const line = (i: number): React.SVGProps<SVGPathElement> => ({ fill: "none", stroke: p.fg, strokeWidth: 7, strokeLinecap: "round", strokeLinejoin: "round", strokeDasharray: len, strokeDashoffset: len * (1 - draw(i)) });
+  const size = 150;
+  if (scene === "S4") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        <path d="M28 12 H62 L76 26 V88 H28 Z" {...line(0)} />
+        <path d="M62 12 V26 H76" {...line(1)} />
+        {[40, 54, 68].map((y, i) => (
+          <g key={y}>
+            <path d={`M36 ${y} l4 4 l7 -8`} {...line(2 + i)} />
+            <path d={`M53 ${y} H68`} {...line(2 + i)} />
+          </g>
+        ))}
+      </svg>
+    );
+  }
+  if (scene === "S5") {
+    const a = (progress(local, 8, 26) * 300 - 90) * (Math.PI / 180);
+    return (
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        <circle cx="50" cy="54" r="34" {...(line(0) as React.SVGProps<SVGCircleElement>)} />
+        <path d="M42 12 H58 M50 12 V20" {...line(1)} />
+        <path d={`M50 54 L${(50 + Math.cos(a) * 24).toFixed(2)} ${(54 + Math.sin(a) * 24).toFixed(2)}`} stroke={p.fg} strokeWidth={7} strokeLinecap="round" opacity={draw(1)} />
+        <circle cx="50" cy="54" r="4" fill={p.fg} opacity={draw(1)} />
+      </svg>
+    );
+  }
+  const wave = (i: number) => progress(local, 12 + i * 5, 8);
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100">
+      <path d="M34 14 H58 Q62 14 62 18 V82 Q62 86 58 86 H34 Q30 86 30 82 V18 Q30 14 34 14 Z" {...line(0)} />
+      <path d="M42 76 H50" {...line(1)} />
+      {[0, 1].map((i) => (
+        <path key={i} d={`M${70 + i * 9} ${38 - i * 6} Q${78 + i * 12} 50 ${70 + i * 9} ${62 + i * 6}`} fill="none" stroke={p.fg} strokeWidth={7} strokeLinecap="round" opacity={wave(i)} />
+      ))}
+    </svg>
   );
 };
 
@@ -559,9 +673,9 @@ const FlyTitle: React.FC<{ title: string; local: number }> = ({ title, local }) 
 const TOOL_SCENES: Record<string, { title: string; state: string; hours: (t: number) => number | null }> = {
   S4: { title: "計画", state: "平時", hours: () => 0 },
   // 訓練の画面には訓練の経過の棒がある（絵は時刻の順でもない）ので、上の 72 時間の線は出さない（画面の「経過 3 時間」と食い違わせない）
-  S5: { title: "訓練", state: "大雨想定", hours: () => null },
+  S5: { title: "訓練", state: "地震想定", hours: () => null },
   // 発災時の録画は切り替えて数分（画面は「発災 1 分」〜「9 分」）。線は 0 の近くに置く
-  S6: { title: "発災時", state: "大雨", hours: () => 0.15 },
+  S6: { title: "発災時", state: "地震", hours: () => 0.15 },
   S7: { title: "使い分け", state: "Claude Code", hours: () => null },
 };
 
@@ -589,19 +703,31 @@ const ToolHeader: React.FC = () => {
   return (
     <GroundProvider ground={scene.ground}>
       <AbsoluteFill style={{ clipPath }}>
-        <Header title={info.title} state={info.state} hours={info.hours(t)} titleOpacity={flying ? 0 : 1} />
-        {flying ? <FlyTitle title={info.title} local={local - start} /> : null}
+        {/* 上の帯の 72 時間の線は外した（作者の声 11/6）。段の名前と状態だけ */}
+        <Header title={info.title} state={info.state} hours={null} titleOpacity={flying ? 0 : 1} />
+        {flying ? <FlyTitle title={info.title} local={local - start} scene={scene.id} /> : null}
       </AbsoluteFill>
     </GroundProvider>
   );
 };
 
-/** 音楽の大きさ。声のある所と強調の所で下げる（強調は一番下げる） */
-function musicVolume(frame: number): number {
+/** 音楽の大きさ。声のある所と強調の所で下げる（強調は一番下げる）。声の出入りで段にならないよう、前後 6 コマ（0.4 秒）の平均でなめらかに変える */
+function musicVolume(frame: number, voice: Assets["voice"]): number {
+  let sum = 0;
+  for (let d = -6; d <= 6; d++) sum += musicTarget(frame + d, voice);
+  return sum / 13;
+}
+
+// 声の終わりは測った声の最後の区切り（字幕の枠の終わりまで下げると、声の後に音の無い間ができる）
+function musicTarget(frame: number, voice: Assets["voice"]): number {
   const s = frame / FPS;
-  for (const scene of SCENES) for (const shot of scene.shots) if (shot.emphasis && s >= shot.at && s < shot.end) return 0.05;
-  for (const line of LINES) if (s >= line.at - 0.2 && s < line.end + 0.2) return 0.12;
-  return 0.3;
+  for (const scene of SCENES) for (const shot of scene.shots) if (shot.emphasis && s >= shot.at && s < shot.end) return 0.12;
+  for (const line of LINES) {
+    const segs = voice?.[line.id];
+    const end = segs && segs.length > 0 ? Math.min(line.end, line.at + segs[segs.length - 1][1]) : line.end;
+    if (s >= line.at - 0.2 && s < end + 0.2) return 0.3;
+  }
+  return 0.6;
 }
 
 const sceneOf = (seconds: number): Scene => SCENES.find((s) => seconds >= s.at && seconds < s.end) ?? SCENES[0];
@@ -656,7 +782,7 @@ export const Care72Video: React.FC<{ showEn: boolean }> = ({ showEn }) => {
           </Sequence>
         );
       })}
-      {music ? <Audio src={staticFile(music)} volume={musicVolume} /> : null}
+      {music ? <Audio src={staticFile(music)} volume={(f) => musicVolume(f, assets.voice)} /> : null}
     </AbsoluteFill>
   );
 };

@@ -15,7 +15,19 @@ export const Subtitle: React.FC<{ line: Line; duration: number; showEn: boolean 
   const frame = useCurrentFrame();
   const p = usePalette();
   const opacity = interpolate(frame, [0, 5, duration - 5, duration], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const rows = splitLine(line.ja);
+  // 2 行に収まらない長い文は「。」で頁に分け、読みの長さの割合で順に出す（11/6、作者の文が長くなったため）
+  const pages = subtitlePages(line.ja);
+  const total = pages.reduce((a, x) => a + x.length, 0);
+  let acc = 0;
+  let page = pages[pages.length - 1];
+  for (const x of pages) {
+    acc += x.length;
+    if (frame < (duration * acc) / total) {
+      page = x;
+      break;
+    }
+  }
+  const rows = splitLine(page);
   return (
     <div
       style={{
@@ -60,6 +72,19 @@ export const Subtitle: React.FC<{ line: Line; duration: number; showEn: boolean 
  * 字幕の行の分け方。「／」があればそこで。無ければ 28 字を超える文だけ、真ん中に一番近い「。」か「、」の後で 2 行に分ける
  * （日本語は言葉の切れ目が分からないので、ブラウザに任せると「計／画」のように語の途中で折れる）
  */
+/** 字幕の頁。60 字までは 1 頁、超えたら「。」の後ろで分け、頁が 60 字を超えないように文をまとめる */
+export function subtitlePages(text: string): string[] {
+  if (text.length <= 60 || text.includes("／")) return [text];
+  // 60 字を超える 1 文は「、」でも分ける（N19）
+  const sentences = (text.match(/[^。]+。?/g) ?? [text]).flatMap((x) => (x.length > 60 ? (x.match(/[^、]+、?/g) ?? [x]) : [x]));
+  const out: string[] = [];
+  for (const x of sentences) {
+    if (out.length && (out[out.length - 1] + x).length <= 60) out[out.length - 1] += x;
+    else out.push(x);
+  }
+  return out;
+}
+
 export function splitLine(text: string): string[] {
   if (text.includes("／")) return text.split("／");
   if (text.length <= 28) return [text];
@@ -70,6 +95,15 @@ export function splitLine(text: string): string[] {
     if (c !== "。" && c !== "、") continue;
     const score = Math.abs(i + 1 - mid) - (c === "。" ? 4 : 0);
     if (best < 0 || score < Math.abs(best + 1 - mid) - (text[best] === "。" ? 4 : 0)) best = i;
+  }
+  // 「。」「、」が真ん中の近くに無い長い文は、真ん中に近い助詞（を・の・で・に・は・が・と・も）の後ろで分ける
+  if (best < 0 || Math.abs(best + 1 - mid) > text.length / 4) {
+    let alt = -1;
+    for (let i = 4; i < text.length - 4; i++) {
+      if (!"をのでにはがとも".includes(text[i]) || /[ぁ-ゖ]/.test(text[i + 1] ?? "") && "でにはがとも".includes(text[i]) && /[しすきくけ]/.test(text[i + 1] ?? "")) continue;
+      if (alt < 0 || Math.abs(i + 1 - mid) < Math.abs(alt + 1 - mid)) alt = i;
+    }
+    if (alt >= 0 && (best < 0 || Math.abs(alt + 1 - mid) < Math.abs(best + 1 - mid))) best = alt;
   }
   return best < 0 ? [text] : [text.slice(0, best + 1), text.slice(best + 1)];
 }

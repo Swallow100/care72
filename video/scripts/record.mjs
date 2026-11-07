@@ -26,6 +26,9 @@ const cmPw = process.env.CARE72_CM_PASSWORD;
 const judgePw = process.env.CARE72_JUDGE_PASSWORD;
 const [scene, take = "1"] = process.argv.slice(2);
 // 置き場は既定で assets/rec。CARE72_REC_DIR を渡すとそこへ（鍵の無い試し撮りを scan に拾わせないため。scan は一番大きい回を使う）
+// 災害の種類（11/6 から作者の望みで地震。CARE72_KIND=heavy_rain で前の大雨）。事業所のボタンの名前と、訓練の想定の印
+const KIND = process.env.CARE72_KIND === "heavy_rain" ? "heavy_rain" : "earthquake";
+const KIND_LABEL = KIND === "heavy_rain" ? "大雨" : "地震";
 const recDir = (id) => join(process.env.CARE72_REC_DIR ?? join(ROOT, "assets", "rec"), `${id}-${take}`);
 
 if (!cmPw || !judgePw || !scene) {
@@ -65,7 +68,7 @@ async function prep(cm) {
 /** 平時: 担当一覧・本人のページ・3 つの紙面 */
 async function calm(browser) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
 
   // R01 担当一覧の平時。ゆっくり下へ
   await open(cm, base, "/");
@@ -104,7 +107,7 @@ async function calm(browser) {
 /** R15 本人のページ（山田 ハナ）を上から下まで送る。N11「話した内容は、アプリの中に記録されていきます」（作者の頼み 11/6）。平時に戻してから撮る */
 async function page(browser) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   await prep(cm);
   await open(cm, base, "/?open=p-01");
   await settle(cm);
@@ -167,12 +170,64 @@ function refreshes(page) {
 }
 
 
+/**
+ * R16 QR の画面（山田 ハナ）。N25「QR コードなどを用いて」。手元の dev の QR は localhost を指すので、読んでも開けない（作者の頼み 11/7）。
+ * 無ければ作る（手元の D1 だけ）
+ */
+async function qrScene(browser) {
+  const cm = await newPage(browser, PC);
+  await login(cm, base, "judge", judgePw, "care_manager");
+  await open(cm, base, "/people/p-01/forms/qr");
+  if ((await cm.$eval("[data-qr-status]", (e) => e.getAttribute("data-qr-status")).catch(() => null)) !== "active") {
+    await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), cm.click('form[action*="/qr"] button[type="submit"]')]);
+    await open(cm, base, "/people/p-01/forms/qr");
+  }
+  const target = await cm.$eval("a[href*='/q/']", (e) => e.getAttribute("href")).catch(() => "");
+  console.log(`  QR の行き先の host: ${target ? new URL(target, base).host : "不明"}`);
+  const r = new Recorder(cm, "R16");
+  await r.start();
+  await sleep(6000);
+  await r.stop(recDir("R16"));
+}
+
+/**
+ * R17 訓練の経過の欄を下へ送る。N17「72 時間のシミュレーション訓練の間に」（作者の頼み 11/7）。手元の D1 に残っている一番新しい訓練を開くだけで、AI は呼ばない。
+ * 「最初に戻す」で訓練が消えるので、disaster や ai-voice より先に撮る
+ */
+async function logScene(browser) {
+  const cm = await newPage(browser, PC);
+  await login(cm, base, "judge", judgePw, "care_manager");
+  await open(cm, base, "/drill");
+  const id = await cm.$eval("tr[data-drill]", (e) => e.getAttribute("data-drill")).catch(() => null);
+  if (!id) throw new Error("手元に訓練の記録が無い");
+  await open(cm, base, `/drill/${id}`);
+  const r = new Recorder(cm, "R17");
+  await r.start();
+  await sleep(1500);
+  const tabs = await cm.$$("[data-pane-tab]");
+  let tab = null;
+  for (const t of tabs) if ((await t.evaluate((e) => e.textContent ?? "")).includes("経過")) tab = t;
+  if (tab) {
+    r.mark("経過のタブ");
+    await tab.click();
+    await sleep(1500);
+  } else console.log("  経過のタブが無い（広い画面で並んでいる形）");
+  await scrollToSel(r, cm, "[data-log]", 1.5, 70);
+  await sleep(800);
+  r.mark("下へ");
+  const h = await cm.evaluate(() => document.documentElement.scrollHeight - innerHeight - scrollY);
+  console.log(`  送れる長さ ${h}px`);
+  await r.scroll(Math.min(h, 3600), 10);
+  await sleep(1000);
+  await r.stop(recDir("R17"));
+}
+
 /** 発災時: 平時 → 大雨。ケアマネ（R10）・家族のスマホ（R11）・本人のスマホ（R12）を同時に、続いて医療班の受入（R13） */
 async function disaster(browser) {
   const cm = await newPage(browser, PC);
   const fam = await newPage(browser, PHONE);
   const self = await newPage(browser, PHONE);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   watchRefresh(cm);
   // スマホには最初に戻したあとに入る（戻す前の状態を撮らないため）。家族のスマホが平時のまま映った件の元は Service Worker の写し（record-lib.mjs の newPage）
   await prep(cm);
@@ -194,8 +249,8 @@ async function disaster(browser) {
   await open(cm, base, "/office");
   await r10.start();
   await sleep(2000);
-  r10.mark("大雨を押す");
-  await clickText(cm, "大雨", { exact: true, within: "main" });
+  r10.mark(`${KIND_LABEL}を押す`);
+  await clickText(cm, KIND_LABEL, { exact: true, within: "main" });
   // 平時から災害モードへは確認の窓が出る（T79）。窓を映してから「切替」を押す
   await cm.waitForSelector('dialog[open] [data-dialog-action="ok"]', { visible: true, timeout: 15_000 });
   r10.mark("確認の窓");
@@ -303,9 +358,14 @@ async function staff(browser) {
   await r13.start();
   await sleep(2000);
   r13.mark("避難所");
-  await med.type('[data-field="shelter"]', "かわなぎ小学校", { delay: 90 });
+  await med.type('[data-field="shelter"]', "福音小学校", { delay: 90 });
   await sleep(800);
   r13.mark("検索");
+  if (!(await med.$('form[data-form="search"]'))) {
+    await clickText(med, "検索", { within: "[data-intake]" });
+    await med.waitForSelector('form[data-form="search"]', { timeout: 10_000 });
+    await sleep(500);
+  }
   await med.type('form[data-form="search"] input[type="search"]', "ヤマダ ハナ", { delay: 90 });
   await med.evaluate(() => {
     const el = document.querySelector('form[data-form="search"] input[type="date"]');
@@ -346,6 +406,8 @@ const inputDir = join(ROOT, "assets", "rec-input");
  * 入れる欄で話す文（山田の未確認の 3 つ: ワーファリンの残り・夜の支援者・避難先 2。docs/video/SHOOTING.md の例から。実在の人・場所は言わない）。
  * 例の「車で来られます」は Web Speech が「来るまで来られます」と聞き違えた（11/5 の試し）ので「来てくれます」に
  */
+/** 問いへの答え（架空の人の架空の答え）。上から順に、文か数で答える問いに入れる */
+const INTAKE_ANSWERS = ["1 回 1 錠", "娘さんの車で行きます", "2 階の箪笥に保管しています", "かかりつけは市民病院です"];
 const INTAKE_LINES = ["ワーファリンはあと10日分あります。", "夜は娘さんが来てくれます。", "2つ目の避難先は娘さんの家です。"];
 /** 本人のスマホの録音に入る声（架空の文。実在の人の声は使わない） */
 const VOICE_LINES = ["足が痛くて動けない"];
@@ -488,8 +550,9 @@ async function aiIntake() {
   const wav = micFile("R02", INTAKE_LINES, 30, 2.5);
   const browser = await launch({ fakeAudio: wav });
   try {
-    const cm = await newPage(browser, PC);
-    await login(cm, base, "yamamoto", cmPw);
+    // 右の列に大きく寄るので細かく撮る（作者の頼み 11/7）
+    const cm = await newPage(browser, { ...PC, deviceScaleFactor: 2.5 });
+    await login(cm, base, "judge", judgePw, "care_manager");
     await prepSafe(cm);
     const keys = await aiKeys(cm);
     await open(cm, base, "/?open=p-01");
@@ -541,10 +604,44 @@ async function aiIntake() {
     r.mark("問い返し");
     await checkWords(cm, "問い返し", hits);
     await scrollToSel(r, cm, '[data-intake="question"]', 1.5, 140);
-    await sleep(5000);
-    r.mark("上へ");
-    await r.scroll(-3000, 2.5);
     await sleep(3000);
+    // 問いに答えていく（選ぶ問いは AI を呼ばない。文で答える問いは Sonnet が分けて、保存する）。やり取りが増えると下へ送れる
+    for (let i = 0; i < INTAKE_ANSWERS.length; i++) {
+      const box = '[data-intake="question"]';
+      if (!(await cm.$(box))) break;
+      r.mark(`問い ${i + 1}`);
+      await checkWords(cm, `問い ${i + 1}`, hits);
+      await sleep(1800);
+      const choice = await cm.$(`${box} [data-choice]`);
+      const area = await cm.$(`${box} textarea`);
+      const line = await cm.$(`${box} form input:not([type="checkbox"]):not([type="radio"])`);
+      if (choice) {
+        await choice.click();
+      } else if (area || line) {
+        await (area ?? line).type(INTAKE_ANSWERS[i], { delay: 45 });
+        await sleep(500);
+        await cm.click(`${box} button[type="submit"]`);
+      } else break;
+      await sleep(1200);
+      if (area) {
+        const split = await waitCut(r, cm, () => !!document.querySelector('[data-intake="changes"]'), { keep: 2, timeout: 120_000, label: "Sonnet 答え" });
+        if (split) {
+          await sleep(1800);
+          await clickText(cm, "保存", { exact: true, within: '[data-intake="changes"]' });
+        }
+      }
+      await settleShort(cm);
+      await sleep(1800);
+      r.mark(`答え ${i + 1}`);
+    }
+    await sleep(1500);
+    // 右の列を見せながら、下へ何度かに分けて送る
+    for (let i = 0; i < 4; i++) {
+      r.mark(`下へ ${i + 1}`);
+      await r.scroll(260, 1.4);
+      await sleep(1100);
+    }
+    await sleep(1000);
     await r.stop(recDir("R02"));
     writeWords(recDir("R02"), hits);
   } finally {
@@ -580,7 +677,7 @@ async function warmRedact(cm, jpg) {
   const [chooser] = await Promise.all([cm.waitForFileChooser({ timeout: 15_000 }), clickText(cm, "選択", { exact: true })]);
   await chooser.accept([jpg]);
   await sleep(1000);
-  await clickText(cm, "読取", { exact: true });
+  await clickText(cm, "読込", { exact: true });
   const ok = await cm
     .waitForSelector('[data-redact="page-image"]', { visible: true, timeout: 300_000 })
     .then(() => true)
@@ -598,7 +695,7 @@ async function warmRedact(cm, jpg) {
 async function aiForm(browser) {
   const jpg = await komorebiPhoto(browser);
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   await prepSafe(cm);
   const keys = await aiKeys(cm);
   if (keys.anthropic) await warmRedact(cm, jpg);
@@ -616,7 +713,7 @@ async function aiForm(browser) {
     return;
   }
   r.mark("読取");
-  await clickText(cm, "読取", { exact: true });
+  await clickText(cm, "読込", { exact: true });
   await cm.waitForSelector('[data-redact="page-image"]', { visible: true, timeout: 180_000 });
   r.mark("黒塗りの画面");
   await sleep(3000);
@@ -801,7 +898,7 @@ async function advance(page, rec, calls, label, hits = [], how = "next") {
  */
 async function aiDrill(browser, { scoreOnly = false } = {}) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   await prepSafe(cm);
   const keys = await aiKeys(cm);
   const voices = collectVoices(cm, /\/api\/drill\/voice\?/);
@@ -824,11 +921,11 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
   const r7 = scoreOnly ? quietRecorder("R07") : new Recorder(cm, "R07");
   await r7.start();
   await sleep(2500);
-  r7.mark("大雨想定");
+  r7.mark(`${KIND_LABEL}想定`);
   // 開始の画面の見込み（AI の回数）を残す（費用の上限を見るため）
-  const estimate = await cm.$eval('[data-estimate-scenario="heavy_rain"][data-estimate-calls]', (e) => e.getAttribute("data-estimate-calls")).catch(() => null);
-  console.log(`  見込み（大雨想定）: AI ${estimate ?? "?"} 回`);
-  await clickSel(cm, '[data-scenario="heavy_rain"]');
+  const estimate = await cm.$eval(`[data-estimate-scenario="${KIND}"][data-estimate-calls]`, (e) => e.getAttribute("data-estimate-calls")).catch(() => null);
+  console.log(`  見込み（${KIND_LABEL}想定）: AI ${estimate ?? "?"} 回`);
+  await clickSel(cm, `[data-scenario="${KIND}"]`);
   const opened = await waitCut(r7, cm, () => !!document.querySelector("main[data-drill]"), { keep: 3, timeout: 240_000, label: "開始" });
   if (!opened) throw new Error("訓練の画面が開かない");
   await settle(cm);
@@ -858,12 +955,19 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
     r7.mark("早送り");
     const fast = await cm.$('[data-action="fast"]');
     if (fast && !(await fast.evaluate((e) => e.checked))) await clickSel(cm, '[data-action="fast"]');
-    await waitCut(r7, cm, (s) => Number(document.querySelector("main[data-drill]")?.getAttribute("data-step") ?? -1) > s || document.querySelector("main[data-drill]")?.getAttribute("data-status") !== "running", {
+    const moved = await waitCut(r7, cm, (s) => Number(document.querySelector("main[data-drill]")?.getAttribute("data-step") ?? -1) > s || document.querySelector("main[data-drill]")?.getAttribute("data-status") !== "running", {
       keep: 3,
-      timeout: 300_000,
+      timeout: 120_000,
       label: "早送り",
       arg: at.step,
     });
+    if (!moved) {
+      // 手のあとの早送りが「読んだ刻みと違う」（409）で止まることがある（11/8）。頁を読み直して続ける
+      console.log(`  早送りが進まない（刻み ${at.step}）。頁を読み直す`);
+      await cm.reload({ waitUntil: "networkidle2" }).catch(() => undefined);
+      await sleep(2000);
+      continue;
+    }
     await settleShort(cm);
     const step = (await drillAt(cm)).step;
     r7.mark(`刻み ${step}`);
@@ -943,7 +1047,7 @@ async function aiDrill(browser, { scoreOnly = false } = {}) {
  */
 async function aiFinish(browser) {
   const cm = await newPage(browser, PC);
-  await login(cm, base, "yamamoto", cmPw);
+  await login(cm, base, "judge", judgePw, "care_manager");
   const keys = await aiKeys(cm);
   const reviewDone = new Promise((resolve) => {
     const on = (r) => {
@@ -1008,7 +1112,7 @@ async function aiFinish(browser) {
 /** 平時 → 大雨（警戒レベル 4・停電 地区 かわなぎ町）。撮らない（disaster の R10 の頭と同じ操作） */
 async function toHeavyRain(cm) {
   await open(cm, base, "/office");
-  await clickText(cm, "大雨", { exact: true, within: "main" });
+  await clickText(cm, KIND_LABEL, { exact: true, within: "main" });
   await cm.waitForSelector('dialog[open] [data-dialog-action="ok"]', { visible: true, timeout: 15_000 });
   await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "切替", { exact: true, within: "dialog[open]" })]);
   await settle(cm);
@@ -1027,7 +1131,7 @@ async function toHeavyRain(cm) {
   });
   await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "保存", { exact: true, within: 'form[action="/office/info"]' })]);
   await settle(cm);
-  console.log("大雨にした（警戒レベル 4・停電 かわなぎ町）");
+  console.log(`${KIND_LABEL}にした（停電 かわなぎ町。警戒レベル 4 は大雨のときだけ）`);
 }
 
 /** 本人のページの「スマホ入口」のリンク（/s/<token>）。無ければ発行する。返すのは道だけ（手元の dev で開く） */
@@ -1054,7 +1158,7 @@ async function aiVoice() {
   const browser = await launch({ fakeAudio: wav });
   try {
     const cm = await newPage(browser, PC);
-    await login(cm, base, "yamamoto", cmPw);
+    await login(cm, base, "judge", judgePw, "care_manager");
     watchRefresh(cm);
     await prepSafe(cm);
     const keys = await aiKeys(cm);
@@ -1165,12 +1269,16 @@ const browser = await launch();
 try {
   if (scene === "prep") {
     const cm = await newPage(browser, PC);
-    await login(cm, base, "yamamoto", cmPw);
+    await login(cm, base, "judge", judgePw, "care_manager");
     await prep(cm);
   } else if (scene === "calm") {
     await calm(browser);
   } else if (scene === "page") {
     await page(browser);
+  } else if (scene === "qr") {
+    await qrScene(browser);
+  } else if (scene === "log") {
+    await logScene(browser);
   } else if (scene === "disaster") {
     await disaster(browser);
   } else if (scene === "staff") {
