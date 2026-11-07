@@ -210,6 +210,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "forms-review-drift", clients: ["real"], bench: "forms", item: "forms.reviewDrift", op: "<=", value: 245, since: "r10", task: "T175", label: "同じ様式の要確認の回ごとの差を広げない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-read.ts", "tools/eval/forms/drift.ts"] },
   // T179: 評価の 11 回目で松山市の住居の構造を □ 1 つに読み、入力の 54 枚で紙が空いた（項目は同じで様式の当たりと要確認に出ない）。線は本物の回の数の r8 6,372（r9 6,392・r11 6,331）。
   // 数え直しは前の答えを返すので本物の回だけで見る。考えは docs/progress/t179.md。比（当たり/字のある欄）なので様式を絞った回でも同じ物差し
+  // T181: 読みの後の決まりで項目を外した欄に、外す前は値が入っていた数。正しく外した欄（同じ値の 2 つ目・種類の添えの空き）も入るので 0 ではなく、
+  // 線は直したあとの r9 の答えの数え直しの数（r11 は 265）。数え直しでも見る（偽の回は読みが崩してあるので見ない）
+  { id: "forms-freed-value", clients: ["real", "replay"], bench: "forms", item: "forms.freedValue", op: "<=", value: 373, since: "r12", task: "T181", label: "読みの後の決まりで欄の値を消す数を増やさない", suspects: ["lib/forms/read-settle.ts", "lib/forms/form-shape.ts", "lib/forms/mapped-sheet.ts"] },
   { id: "forms-paper-total", clients: ["real"], bench: "forms", item: "forms.paper.total", op: ">=", value: 6372 / 6509, since: "r12", task: "T179", label: "紙の全体を読みの形の揺れで落とさない", suspects: ["lib/forms/lone-mark.ts", "lib/forms/read-settle.ts", "lib/forms/mapped-sheet.ts", "lib/forms/overlay-sheet.ts"] },
   // T166: 使う側の模擬の 2 回目で迷った所。数は直した形の値で、本物の回はまだ（docs/progress/t166.md）
   { id: "persona-medical-role", bench: "persona", item: "count:persona:unreached:medical.role", op: "<=", value: 0, since: "r9", task: "T166", label: "医療班の筋で医療班の役に入れる", suspects: ["components/person/RequestSection.tsx", "components/ui/RoleMenu.tsx", "tools/eval/persona/surface.ts"] },

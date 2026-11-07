@@ -62,6 +62,7 @@ import { paperText } from "./paper-text.ts";
 import { warekiText } from "./wareki.ts";
 import { codeOfOption, codesOf, freeCodes, optionTable, pickByCodes, soleCodeOfText } from "./option-values.ts";
 import { bracketOwners, strayOther, type BracketOwner } from "./form-shape.ts";
+import { hasSlot } from "./read-settle.ts";
 import { transportKindOf, transportText } from "../map/transport.ts";
 
 // ---------- 項目の値 ----------
@@ -738,6 +739,11 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
     if (cell.kind === "unconfirmed") {
       return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), unconfirmed: cell.reason ? { reason: cell.reason } : {} };
     }
+    // 名前が種類の あり・なし の行（「土砂災害警戒区域 □あり □なし」。T181）: その種類が台帳にあれば あり、無ければ なし（ほかの種類の値で あり にしない）
+    if (yesNoOwner(field)) {
+      const kind = kindFlag(field, v);
+      if (kind === true || kind === false) return { kind: "choice", options: field.options.map((label) => ({ label, on: (kind ? YES : NO).test(normalizeWord(label)) })) };
+    }
     // 選択肢と台帳の値の表（T140、lib/forms/option-values.ts）: 台帳の値のコードと照らす。当たれば印、範囲外なら空ける（空くのが答え）。
     // 1 つを選ぶ欄で 2 つ以上当たれば選ばない（選択肢に無い）。表で当たらない選択肢だけのときは、前の言葉の照らし方へ
     const table = field.item ? optionTable(field) : null;
@@ -958,6 +964,9 @@ export function phoneRole(cell: Cell, field: MappingField, fields: readonly Mapp
   return lines.length > 0 ? { kind: "value", lines } : unconfirmed();
 }
 
+/** あり・なし の 2 つを選ぶ欄か */
+const yesNoOwner = (f: MappingField) => f.shape === "choice" && f.options.length === 2 && f.options.some((o) => YES.test(normalizeWord(o))) && f.options.some((o) => NO.test(normalizeWord(o)));
+
 /**
  * 括弧の子の欄（T164、lib/forms/form-shape.ts の bracketOwner）の値。親の値を丸ごと書かない:
  * - 親が種類の □（「□抗血小板薬（　）」）: その種類の値だけ（同じ行の左の □ の種類も。「□抗凝固薬 □ワーファリン（　）」は抗凝固薬の全部）。無ければ空
@@ -965,8 +974,11 @@ export function phoneRole(cell: Cell, field: MappingField, fields: readonly Mapp
  * - 親が種類でない □（「□アレルギー（　）」）: 今までどおり項目の値（T161。□ に印、括弧の中に中身）
  * - 親が選ぶ欄（「□その他（　）」「□洪水（～）」）: 空。親の選択肢の添え・その他の値を、紙（overlay-sheet.ts の placeChoice）がこの欄の枠に置く
  */
-export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx): Cell {
+export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx, writtenElsewhere = false): Cell {
   if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
+  // あり・なし の選ぶ欄の「あり（　）」（T181）: あり の中身を書く所。値があれば項目の値（あり に印は親の選ぶ欄）、無ければ空（「なし」は親の印）。
+  // 同じ項目の値をほかの字の欄（別の頁も）に書く様式では書かない（同じ値を 2 か所に書くと見直しの重複）
+  if (own.option !== null && yesNoOwner(own.owner) && YES.test(normalizeWord(own.owner.options[own.option] ?? ""))) return cell.kind === "value" && !writtenElsewhere ? cell : EMPTY;
   if (own.option !== null) return EMPTY;
   const item = own.owner.item;
   if (!item) return cell;
@@ -975,6 +987,18 @@ export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ct
   if (!v.kindCell || v.flag !== true) return EMPTY;
   // 「その他」の □ を読み落とした並びの終わりの「その他（　）」は、その他の種類の値
   return v.kindCell(own.rest ? ["その他"] : own.row.map((f) => f.label));
+}
+
+/**
+ * □・選ぶ欄の行の後ろの空きの字の欄（T181。「□なし □あり 病名（　）」の 病名（　））。同じ頁・同じ項目の □・選ぶ欄の右で同じ行の、名前に空きのある字の欄。
+ * 値が無い（「なし」）ときは □ の なし の印で言うので、空きに「なし」を書かない
+ */
+function markSlot(field: MappingField, fields: readonly MappingField[]): boolean {
+  if ((field.shape !== "text" && field.shape !== "lines") || !field.item || !field.box || !hasSlot(field.label)) return false;
+  const fb = field.box;
+  return fields.some(
+    (g) => g !== field && !g.removed && g.page === field.page && g.item === field.item && (g.shape === "check" || g.shape === "choice") && !!g.box && g.box.x < fb.x && Math.abs(g.box.y + g.box.h / 2 - (fb.y + fb.h / 2)) <= Math.max(g.box.h, fb.h),
+  );
 }
 
 /** 確かめた対応表と台帳から、欄の順に値を並べた紙面を作る */
@@ -1008,7 +1032,8 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
     const base = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
     // 並びの終わりの「その他（　）」に違う項目（T164、form-shape.ts の strayOther）: 違う欄に書かない
     const stray = !own && !held.has(field.id) && base.kind !== "withheld" && strayOther(field, shown);
-    const cell = own ? bracketCell(base, own, ctx) : stray ? EMPTY : base;
+    const elsewhere = !!own && shown.some((g) => g !== field && !g.removed && g.item === field.item && g.shape !== "handwrite" && (g.shape === "text" || g.shape === "lines" || g.shape === "date" || g.shape === "phone") && !brackets.has(g.id));
+    const cell = own ? bracketCell(base, own, ctx, elsewhere) : stray ? EMPTY : markSlot(field, shown) && base.kind === "none" ? EMPTY : base;
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);
