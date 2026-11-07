@@ -711,18 +711,22 @@ const ToolHeader: React.FC = () => {
   );
 };
 
-/** 音楽の大きさ。声のある所と強調の所で下げる（強調は一番下げる） */
-/** 音楽の大きさ。声の出入りで段にならないよう、前後 6 コマ（0.4 秒）の平均でなめらかに変える */
-function musicVolume(frame: number): number {
+/** 音楽の大きさ。声のある所と強調の所で下げる（強調は一番下げる）。声の出入りで段にならないよう、前後 6 コマ（0.4 秒）の平均でなめらかに変える */
+function musicVolume(frame: number, voice: Assets["voice"]): number {
   let sum = 0;
-  for (let d = -6; d <= 6; d++) sum += musicTarget(frame + d);
+  for (let d = -6; d <= 6; d++) sum += musicTarget(frame + d, voice);
   return sum / 13;
 }
 
-function musicTarget(frame: number): number {
+// 声の終わりは測った声の最後の区切り（字幕の枠の終わりまで下げると、声の後に音の無い間ができる）
+function musicTarget(frame: number, voice: Assets["voice"]): number {
   const s = frame / FPS;
   for (const scene of SCENES) for (const shot of scene.shots) if (shot.emphasis && s >= shot.at && s < shot.end) return 0.05;
-  for (const line of LINES) if (s >= line.at - 0.2 && s < line.end + 0.2) return 0.12;
+  for (const line of LINES) {
+    const segs = voice?.[line.id];
+    const end = segs && segs.length > 0 ? Math.min(line.end, line.at + segs[segs.length - 1][1]) : line.end;
+    if (s >= line.at - 0.2 && s < end + 0.2) return 0.12;
+  }
   return 0.3;
 }
 
@@ -778,7 +782,7 @@ export const Care72Video: React.FC<{ showEn: boolean }> = ({ showEn }) => {
           </Sequence>
         );
       })}
-      {music ? <Audio src={staticFile(music)} volume={musicVolume} /> : null}
+      {music ? <Audio src={staticFile(music)} volume={(f) => musicVolume(f, assets.voice)} /> : null}
     </AbsoluteFill>
   );
 };

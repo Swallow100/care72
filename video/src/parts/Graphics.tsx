@@ -70,7 +70,7 @@ export const Title: React.FC<{ title: string; sub?: string }> = ({ title, sub })
  * sub は下の帯（S1 の「誰の・どの場面」）。「×」で分けた言葉を 1 つずつ面に並べる
  */
 /**
- * 左下の名札（S3 の作者の紹介）。大きな字の画面にしない（11/4）。字幕の帯の上、舞台の左に 2 行。
+ * 左下の名前の帯（S3 の作者の紹介）。大きな字の画面にしない（11/4）。字幕の帯の上、舞台の左に 2 行。
  * 1 行目は名前の代わり（作者　医学部の学生）、2 行目は理由（家族にケアマネジャー）。左の帯は表の強調と同じ 6px
  */
 export const Plate: React.FC<{ lines: string[]; beats?: number[] }> = ({ lines, beats }) => {
