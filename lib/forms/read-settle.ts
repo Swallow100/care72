@@ -189,6 +189,11 @@ function freeSlots(fields: readonly MappingField[]): MappingField[] {
 /** 項目の名前そのものを持つ欄か（「支援の内容」と「支援内容」。部分の言葉だけの namesItem より強い） */
 const fullName = (f: MappingField, item: LedgerItemKey) => squeeze(f.label).includes(squeeze(ledgerItem(item).label).replace(/の/g, ""));
 
+/** 種類の並びを持つ項目（行の名前が種類の あり・なし の選ぶ欄を、行ごとに残す） */
+const ROW_KIND_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["evacuation.hazards", "evacuation.support"]);
+/** あり・なし の 2 つを選ぶ欄 */
+const yesNoChoice = (f: MappingField) => f.shape === "choice" && f.options.length === 2 && f.options.some((o) => YES_WORD.test(squeeze(o))) && f.options.some((o) => NO_WORD.test(squeeze(o)));
+
 /** 同じ頁の同じ項目の選ぶ欄は 1 つ（項目の名前そのものの欄か、最初の欄）。種類ごとの項目は決まり 12 の例外 */
 function keepOneChoice(fields: readonly MappingField[]): MappingField[] {
   const groups = new Map<string, MappingField[]>();
@@ -200,6 +205,9 @@ function keepOneChoice(fields: readonly MappingField[]): MappingField[] {
   const drop = new Set<string>();
   for (const group of groups.values()) {
     if (group.length < 2) continue;
+    // 種類ごとの あり・なし の行（「洪水浸水想定区域 □あり □なし」「土砂災害警戒区域 □あり □なし」。T181）: 行の名前が種類で、紙は行ごとに種類を照らす
+    // （lib/forms/mapped-sheet.ts の shapeCell）。2 つ目からを外すと、その行が未確認になった
+    if (ROW_KIND_ITEMS.has(group[0].item!) && group.every(yesNoChoice) && new Set(group.map((f) => squeeze(f.label))).size === group.length) continue;
     const keep = group.find((f) => fullName(f, f.item!)) ?? group[0];
     for (const f of group) if (f !== keep) drop.add(f.id);
   }

@@ -739,6 +739,11 @@ export function shapeCell(field: MappingField, v: ItemValue): Cell {
     if (cell.kind === "unconfirmed") {
       return { kind: "choice", options: field.options.map((label) => ({ label, on: false })), unconfirmed: cell.reason ? { reason: cell.reason } : {} };
     }
+    // 名前が種類の あり・なし の行（「土砂災害警戒区域 □あり □なし」。T181）: その種類が台帳にあれば あり、無ければ なし（ほかの種類の値で あり にしない）
+    if (yesNoOwner(field)) {
+      const kind = kindFlag(field, v);
+      if (kind === true || kind === false) return { kind: "choice", options: field.options.map((label) => ({ label, on: (kind ? YES : NO).test(normalizeWord(label)) })) };
+    }
     // 選択肢と台帳の値の表（T140、lib/forms/option-values.ts）: 台帳の値のコードと照らす。当たれば印、範囲外なら空ける（空くのが答え）。
     // 1 つを選ぶ欄で 2 つ以上当たれば選ばない（選択肢に無い）。表で当たらない選択肢だけのときは、前の言葉の照らし方へ
     const table = field.item ? optionTable(field) : null;

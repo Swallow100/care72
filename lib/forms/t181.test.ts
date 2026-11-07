@@ -171,6 +171,50 @@ describe("T181 5 □ を 1 つ読み落とした行の □ 1 つを分けるの�
   });
 });
 
+describe("T181 6 災害の種類ごとに あり・なし の行が並ぶ様式", () => {
+  const hazards = "evacuation.hazards" as const;
+  const rows: Array<[string, number]> = [
+    ["洪水浸水想定区域", 0.3],
+    ["土砂災害警戒区域", 0.33],
+    ["津波浸水想定区域", 0.36],
+  ];
+  const m = () =>
+    read(
+      rows.map(([label, y]) =>
+        fld({ section: "自宅のリスク", label, shape: "choice", item: hazards, options: ["あり", "なし"], box: box(0.5, y, 0.2, 0.015), option_boxes: [box(0.5, y, 0.01, 0.01), box(0.6, y, 0.01, 0.01)] }),
+      ),
+    );
+  /** 行ごとの印（あり・なし・空） */
+  const marks = (id: string) => {
+    const sheet = buildMappedSheet(seedRows(seed(id)), m(), OPTS);
+    return sheet.pages.flatMap((p) => p.sections.flatMap((s) => s.rows.map((r) => (r.cell.kind === "choice" ? (r.cell.options.find((o) => o.on)?.label ?? "") : r.cell.kind))));
+  };
+  const kindsOf = (id: string) => (seed(id).ledger?.evacuation.hazards ?? []).map((h) => h.kind);
+
+  it("種類の言葉の行は外さない", () => {
+    expect(m().fields.map((f) => f.item)).toEqual([hazards, hazards, hazards]);
+  });
+
+  it("行ごとに、その種類が台帳にあれば あり、無ければ なし（ほかの種類の人の行に あり を付けない）", () => {
+    const want = (k: string[]) => [k.includes("flood") ? "あり" : "なし", k.includes("landslide") ? "あり" : "なし", k.includes("tsunami") ? "あり" : "なし"];
+    const tried = new Set<string>();
+    for (const p of SEED_PEOPLE) {
+      const k = kindsOf(p.person.id);
+      if (seed(p.person.id).ledger?.pending.some((x) => x.field.startsWith("evacuation.hazards"))) continue;
+      expect(marks(p.person.id), p.person.id).toEqual(want(k));
+      tried.add(k.join(","));
+    }
+    // 洪水の人・土砂の人・津波の人のどれも見た
+    for (const k of ["flood", "landslide", "tsunami"]) expect([...tried].some((t) => t.split(",").includes(k)), k).toBe(true);
+  });
+
+  it("種類の言葉でない あり・なし の選ぶ欄は今までどおり 1 つ（2 つ目を外す）", () => {
+    const a = fld({ section: "手帳", label: "手帳の有無", shape: "choice", item: "care.handbook", options: ["あり", "なし"], box: box(0.5, 0.3, 0.2, 0.015), option_boxes: [box(0.5, 0.3, 0.01, 0.01), box(0.6, 0.3, 0.01, 0.01)] });
+    const b = fld({ section: "手帳", label: "交付", shape: "choice", item: "care.handbook", options: ["あり", "なし"], box: box(0.5, 0.33, 0.2, 0.015), option_boxes: [box(0.5, 0.33, 0.01, 0.01), box(0.6, 0.33, 0.01, 0.01)] });
+    expect(read([a, b]).fields.map((f) => f.item)).toEqual(["care.handbook", null]);
+  });
+});
+
 describe("T181 4 まとめた選ぶ欄の枠は括弧まで、名前は □ の名前", () => {
   const transport = "evacuation.transport" as const;
   const marks = ["徒歩", "車いす", "その他"].map((l, i) => fld({ section: "避難", label: l, shape: "check", item: transport, box: box(0.2 + i * 0.12, 0.3, 0.012, 0.01) }));
