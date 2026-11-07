@@ -12,6 +12,7 @@ import { EMPTY_WORLD, type WorldState } from "./scenarios.ts";
 import { clockOfMinute, clockWhen, dayLine, startHourOf } from "./night.ts";
 import { simTimeText } from "./time-text.ts";
 import { calleeText, speakerText } from "./labels.ts";
+import { typingOutside } from "../../components/drill/IncomingCall.tsx";
 
 describe("1. 発災の時刻の分", () => {
   const startedAt = "2026-11-04T01:50:00.000Z"; // 日本の 10:50
@@ -188,5 +189,20 @@ describe("8. いる所の問いに答える人", () => {
     expect(placeReplyOf(f, false)).toBe("避難所にいるはずです。");
     expect(placeReplyOf({ ...f, place: { where: "other", at: 60, by: "wandering" } }, false)).toBe("どこにいるか分かりません。");
     expect(placeReplyOf({ ...f, moving: { to: "shelter", at: 200, by: "plan" } }, false)).toBe("今、向かっている途中のはずです。");
+  });
+});
+
+describe("10. 鳴っている間の焦点", () => {
+  const box = { contains: (n: never) => n === (inside as never) };
+  const inside = { tagName: "TEXTAREA" };
+  it("着信の外の文字の欄を打っている間だけ焦点を移さない", () => {
+    expect(typingOutside(box, { tagName: "TEXTAREA" })).toBe(true);
+    expect(typingOutside(box, { tagName: "INPUT", type: "text" })).toBe(true);
+    expect(typingOutside(box, { tagName: "DIV", isContentEditable: true })).toBe(true);
+    expect(typingOutside(box, inside)).toBe(false);
+    expect(typingOutside(box, { tagName: "BUTTON" })).toBe(false);
+    expect(typingOutside(box, { tagName: "INPUT", type: "checkbox" })).toBe(false);
+    expect(typingOutside(box, { tagName: "TEXTAREA", readOnly: true })).toBe(false);
+    expect(typingOutside(box, null)).toBe(false);
   });
 });
