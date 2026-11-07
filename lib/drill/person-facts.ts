@@ -463,9 +463,10 @@ export function carryPromises(
 
 /**
  * 向かう先と動詞の間に挟まる手段・連れの言い方（T165。評価の 7 回目で「避難所へ歩いて行きます」が向かうと言った事にならず、
- * 計画の手段で移らないまま、あとの連絡で家にいた）。「車で」「妻と」「これから」など短い物だけ
+ * 計画の手段で移らないまま、あとの連絡で家にいた）。「車で」「妻と」「これから」など短い物だけ。
+ * 読点を挟む言い方と 2 語続く言い方も（T178。評価の 11 回目で、行き先の後に読点と「これから」を挟む言い方が当たらず、移ると言ったまま家にいた）
  */
-const GO_GAP = String.raw`(?:歩いて|車で|徒歩で|一緒に|これから|今から|すぐに?|早めに|[^。、\s]{1,4}?(?:と一緒に|と|の車で))?`;
+const GO_GAP = String.raw`[、,]?(?:(?:歩いて|車で|徒歩で|一緒に|これから|今から|すぐに?|早めに|[^。、\s]{1,4}?(?:と一緒に|と|の車で|を連れて))[、,]?){0,2}`;
 /** 避難先へ向かうと言った言い方（打ち消し・「行かん」は見ない。T139） */
 const GO_INTENT = new RegExp(
   `(?:避難所|避難先|病院|集会所|公民館|学校|高台)(?:へ|に)${GO_GAP}(?:向か(?!え)|行き(?!ませ)|行く|行こう|移り(?!ませ)|移る|移ろう|移動し(?!な|ませ)|連れて行(?!け))|避難(?:します|する|しよう|しています|を始め)`,
@@ -1098,7 +1099,7 @@ const STILL_OUT = /まだ停電|停電(?:が|は)?(?:まだ|今も)?(?:続い|�
 const AT_SHELTER =
   /避難所(?:に|へ)(?:着(?!け)|い(?!ない|ません|け|か|き|こ)|居(?!ない|ません)|来(?!られ|れ)|移(?!れ|り(?:ます|たい|ましょ)|ろう|る))|避難所で(?:過ご(?!せ)|休|待)/;
 /** 移る先の言葉（T177） */
-const MOVE_PLACE = "(?:福祉避難所|避難所|避難先|病院|集会所|公民館|学校|高台|施設|親戚の家)";
+const MOVE_PLACE = "(?:福祉避難所|避難所|避難先|病院|集会所|公民館|学校|体育館|高台|施設|親戚の家)";
 /**
  * これから移る言い方（T177）。評価の 10 回目で「計画どおり避難所へ行きます」「母を避難所へ車で移します」「兄を車で避難所へ送ります」と言ったあと、移す手も無いまま手伝いを待った。
  * 記録に無い移動の言葉は門で落とす（移れる人の刻みの言葉は記録になる）。「行きたい」「移れますか」「移してほしい」のような頼み事は見ない
@@ -1107,8 +1108,20 @@ const MOVE_FUTURE = new RegExp(
   `${MOVE_PLACE}(?:へ|に|まで)${GO_GAP}(?:向かいます|向かう(?!か)|向かおう|行きます|行く(?!か|の|ん|べ)|行こう|いきます|移ります|移る(?!か|の|ん|手|先|所|人|段|方)|移ろう|移します|移す(?!か|の|ん|手|段|方)|移動します|移動する(?!か|の|手)|送ります|送る(?!か|の)|連れて行きます|連れていきます)|避難(?:します|しよう)`,
   "u",
 );
+/**
+ * 行き先の語の無い、これから移る言い方（T178。評価の 11 回目で「これから移ります」が記録にならず家のままだった）。「2 階へ移ります」「予備に移ります」「場所を移ります」のように
+ * すぐ前に助詞の付く物と、「移る手だて」「移るかは」「移りますか」は見ない。向かう言い方は入れない（家族の「今から母の家へ向かいます」は本人の移動でない）
+ */
+const MOVE_BARE = /(?<![へにをが][、,]?)(?:移ります(?!か)|移ろう|移動します(?!か)|移る(?=[。！!]|$)|移動する(?=[。！!]|$))|(?:母|父|夫|妻|主人|家内|うちの人|本人|叔母|叔父|祖母|祖父|兄|姉|弟|妹)を[^。、へに]{0,8}?(?:移します|連れて行きます|連れていきます)/u;
+/** 家の中や機器の話の移る言い方（T178。行き先の語の無い形の外）。「2 階へ、これから移ります」は家の外へ移る話でない。「2 階にいます」は見ない */
+const MOVE_INSIDE = /(?:階|部屋|寝室|居間|ベッド|布団|予備|電池|ボンベ|電源)(?:へ|に)(?!い|お|居)/u;
+/** 条件つきの言い方（T178。「車が来たら移ります」は今移ると言った事にしない。移れない人でも言ってよい） */
+const MOVE_IF = /たら|れば|なら(?!な)|次第|てから|でから|時は|ときは|場合は/u;
 /** 計画の中身を説明する言い方（T177。「計画では避難所に行く予定です」は移ると言った事にしない） */
 const PLAN_TALK = /計画では|予定です|予定になって/u;
+/** 1 文がこれから移ると言っているか（T178。門 move_said・startsMove・台の move_unrecorded が同じに読む） */
+const saysMoving = (sentence: string): boolean =>
+  !GO_NOT.test(sentence) && !PLAN_TALK.test(sentence) && !MOVE_IF.test(sentence) && (MOVE_FUTURE.test(sentence) || (MOVE_BARE.test(sentence) && !MOVE_INSIDE.test(sentence)));
 /** 移ったと言う言い方のうち AT_SHELTER・AT_HOSPITAL の外の物（T177。家にいる人は言わない） */
 const MOVED_SAID = new RegExp(`${MOVE_PLACE}(?:に|へ)(?:着きました|着いた|移りました|移った|移れました|入りました|来たよ|来ました)|家から移っ|移送の車で[^。、]{0,8}?移(?:りました|った)`, "u");
 /** 移送の車が来た言い方（T177。来ていない車を来たと言わない。「来たら」「来ません」は見ない） */
@@ -1395,7 +1408,7 @@ export function sentenceSlip(s: string, ctx: SlipContext): GateRule | null {
   // 記録に無い移動（T177）。家にいる人の「避難先に移りました」、避難所にいる人の「病院に移りました」、移れない人の「移ります」、来ていない移送の車
   if (ctx.place === "home" && MOVED_SAID.test(t) && !RETURNED.test(t)) return "place_text";
   if (ctx.place === "shelter" && AT_HOSPITAL.test(t) && !RETURNED.test(t)) return "place_text";
-  if (ctx.noMove && MOVE_FUTURE.test(t) && !GO_NOT.test(t) && !PLAN_TALK.test(t)) return "move_said";
+  if (ctx.noMove && saysMoving(t)) return "move_said";
   if (ctx.rideCame === false && RIDE_CAME.test(t)) return "move_said";
   if (roadSlip(t, ctx)) return "road_said";
   // 停電が戻ったあとに、まだ続いていると言う（T167。世界の停電の復旧と家の電気を食い違わせない）
@@ -1649,10 +1662,13 @@ export function screenTurn(turn: DrillTurn, f: Facts, onDrop?: (rule: GateRule) 
  */
 export function startsMove(f: Facts, texts: ReadonlyArray<string | null | undefined>): boolean {
   if ((f.place?.where ?? "home") !== "home" || f.moving || !canLeaveHome(f)) return false;
-  return texts.some((x) => {
-    const t = (x ?? "").normalize("NFKC");
-    return t !== "" && (MOVE_FUTURE.test(t) || GO_INTENT.test(t)) && !GO_NOT.test(t) && !PLAN_TALK.test(t) && !RETURNED.test(t);
-  });
+  return texts.some((x) =>
+    // 文ごとに見る（T178。「道が通らず行けませんでした。これから移ります」の前の文で落とさない。条件つきの言い方は文の中で読む）
+    (x ?? "")
+      .normalize("NFKC")
+      .split(/(?<=[。！？!?])/u)
+      .some((t) => t !== "" && !RETURNED.test(t) && (saysMoving(t) || (GO_INTENT.test(t) && !GO_NOT.test(t) && !PLAN_TALK.test(t) && !MOVE_IF.test(t)))),
+  );
 }
 
 // ---------- 監督・世界の出来事（業者の巡回と、同じ出来事の重なり） ----------
