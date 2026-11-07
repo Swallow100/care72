@@ -2,10 +2,16 @@
 // docs/progress/eval-r2-forms-findings.md の 3）。崩れた形を見つけて全角の括弧の形にそろえ、元の文と照らして戻す。
 
 import { describe, expect, it } from "vitest";
-import { SEED_PEOPLE } from "../../seed/people.ts";
+import { SEED_PEOPLE, type SeedPerson } from "../../seed/people.ts";
 import { canonicalMarks, hasAnyMark, hasBrokenMark, hasMaskMark, inputTexts, markSpans, pseudonymize, sourceRestorer, type PseudonymInput } from "./index.ts";
 
-const P01 = SEED_PEOPLE.find((p) => p.person.id === "p-01")!;
+// T183 で種の避難先は実在の施設の名前（町名を含まない）にした。町名を含む避難先の伏せ字を戻す確かめなので、山田の避難先 1 を前の種の
+// 町名の入った名前（実の事業所でも、本人の町名を含む避難先はこの形で渡る）にして使う
+const P01: SeedPerson = withTownShelter(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
+function withTownShelter(p: SeedPerson): SeedPerson {
+  const { destination1Location: _, ...evacuation } = p.ledger.evacuation;
+  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "かわなぎ小学校" } } };
+}
 const input: PseudonymInput = {
   person: P01.person,
   ledger: P01.ledger,

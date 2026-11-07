@@ -117,10 +117,12 @@ export function checkContext(): CheckContext {
   // 帳面の検査（T130）に要る本人ごとの計画・同居・家族・ハザード（本人役と同じ作り方）
   const facts: Record<string, FactPerson> = Object.fromEntries(
     SEED_SOURCES.map((s) => {
-      const { together, kin } = housemates(s, contactRoles(s.contacts), s.ledger.basic.sex ?? null);
+      const roleList = contactRoles(s.contacts);
+      const { together, kin } = housemates(s, roleList, s.ledger.basic.sex ?? null);
+      const roles = Object.fromEntries(s.contacts.map((c, i) => [c.id, roleList[i]] as const));
       return [
         s.person.id,
-        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null, canPress: reportersOf(s).some((x) => x.canPress && (x.source === "agent" || together.includes(x.role))), selfPhone: selfCanAnswer(s.ledger), farPress: reportersOf(s).some((x) => x.canPress && x.source !== "agent" && !together.includes(x.role)), home: homeOf(s.ledger) },
+        { plan: planOf(s), together, kin, hazards: s.ledger.evacuation.hazards, town: s.ledger.basic.address?.town ?? null, canPress: reportersOf(s).some((x) => x.canPress && (x.source === "agent" || together.includes(x.role))), selfPhone: selfCanAnswer(s.ledger), farPress: reportersOf(s).some((x) => x.canPress && x.source !== "agent" && !together.includes(x.role)), home: homeOf(s.ledger), roles },
       ];
     }),
   );

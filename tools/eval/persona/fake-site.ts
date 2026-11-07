@@ -48,7 +48,7 @@ const fresh = (): State => ({
   startConfirm: false,
   resetConfirm: false,
   people: [
-    { id: "chk-p-01", name: "山田 ハナ", place: "かわなぎ小学校" },
+    { id: "chk-p-01", name: "山田 ハナ", place: "福音小学校" },
     { id: "chk-p-05", name: "伊藤 フミ", place: null },
   ],
   editing: false,
@@ -340,11 +340,11 @@ export class FakeSurface implements Surface {
       return {
         title: "受入一覧 | ケア72",
         headings: ["受入一覧", ...(asked || rest ? ["受入依頼"] : []), "受入"],
-        text: `受入一覧 ${count} 人${asked ? " 受入依頼 1 人 ヤマダ ハナ デモ事業所（確認用） かわなぎ小学校" : ""}${rest ? " コバヤシ トシ タナカ シゲル" : ""} 避難所 ${st.shelter ?? "未入力"}`,
+        text: `受入一覧 ${count} 人${asked ? " 受入依頼 1 人 ヤマダ ハナ デモ事業所（確認用） 福音小学校" : ""}${rest ? " コバヤシ トシ タナカ シゲル" : ""} 避難所 ${st.shelter ?? "未入力"}`,
         items: [
           ...(asked
             ? [
-                { role: "button", name: "受入 ヤマダ ハナ", on: (s: State) => ((s.replied = true), (s.received = true), (s.shelter = "かわなぎ小学校"), "/staff?received=cu-1") } satisfies FakeItem,
+                { role: "button", name: "受入 ヤマダ ハナ", on: (s: State) => ((s.replied = true), (s.received = true), (s.shelter = "福音小学校"), "/staff?received=cu-1") } satisfies FakeItem,
                 { role: "button", name: "受入不可 ヤマダ ハナ", on: (s: State) => void (s.replied = true) } satisfies FakeItem,
               ]
             : []),

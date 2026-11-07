@@ -162,7 +162,7 @@ describe("台帳の緯度経度（架空の位置）", () => {
     const yamada = rows.find((r) => r.id === "p-01")!;
     expect(yamada.location).toEqual(SEED_LOCATIONS["p-01"]);
     expect(yamada.hazardKinds).toEqual([{ kind: "flood", depthM: 3 }]);
-    expect(yamada.destination).toBe("かわなぎ小学校");
+    expect(yamada.destination).toBe("福音小学校");
     expect(yamada.pendingFields).toHaveLength(3);
   });
 
@@ -316,7 +316,7 @@ describe("ハザードと避難先の人数", () => {
     const d = destinationCounts(rows);
     expect(d[d.length - 1]).toEqual({ label: "未確認", count: 3, unset: true });
     expect(d.reduce((s, x) => s + x.count, 0)).toBe(10);
-    expect(d.find((x) => x.label === "かわなぎ小学校")?.count).toBe(1);
+    expect(d.find((x) => x.label === "福音小学校")?.count).toBe(2);
   });
 
   it("発災時の状態の人数は lib/triage の結果と同じ", () => {

@@ -83,7 +83,8 @@ function Band({ stamp }: { stamp: string }) {
           </span>
         )}
         {cachedAt && (
-          <Button size={phone ? "lg" : "sm"} icon={RetryIcon} onClick={() => window.location.reload()} data-offline-reload>
+          // 写しのときに押す物は「読み直す」だけなので主の操作の色（T184）
+          <Button kind="main" size={phone ? "lg" : "sm"} icon={RetryIcon} onClick={() => window.location.reload()} data-offline-reload>
             {OFFLINE_LABELS.reload}
           </Button>
         )}

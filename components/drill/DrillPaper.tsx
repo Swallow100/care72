@@ -29,6 +29,7 @@ import {
   fictionLabels,
   LOG_LABELS,
   SCENARIO_LABELS,
+  speakerText,
   STATUS_LABELS,
   T59_LABELS,
 } from "@/lib/drill/labels";
@@ -666,7 +667,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                           {(a.result?.talk ?? []).map((l, i) => (
                             <Fragment key={i}>
                               {i > 0 && "　"}
-                              {l.who === "cm" ? TALK_UI.me : (calleeText(a) ?? "")}
+                              {l.who === "cm" ? TALK_UI.me : (speakerText(a) ?? "")}
                               {l.voice && <span data-paper-voice>（{TALK_UI.voice}）</span>}
                               {l.ai && <span className="drill-ai"> AI</span>}
                               {t(`「${l.text}」`)}

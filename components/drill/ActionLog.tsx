@@ -20,7 +20,7 @@ import { LABEL } from "@/components/ui/Panel";
 import { Mark, StateTag, StateText } from "@/components/ui/Tag";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
 import type { ActionRecord, ActionResult, DrillTurn, Tick } from "@/lib/drill/engine";
-import { ACTION_LABELS, ACTION_UI, calleeText, DRILL_LABELS, elapsedLabel, T59_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, calleeText, DRILL_LABELS, elapsedLabel, speakerText, T59_LABELS } from "@/lib/drill/labels";
 import { COLOR_LABELS, CONTACT_KIND_LABELS } from "@/lib/labels";
 import { SOURCE_LABELS } from "@/lib/list/detail";
 import type { StateTone } from "@/lib/person";
@@ -250,8 +250,8 @@ export function ActionItem({
       )}
       <FreeTextLine a={a} />
       <MemoLine memo={a.memo} />
-      {r?.speech && <Bubble speaker={calleeText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
-      {r?.talk && <TalkFold lines={r.talk} speaker={calleeText(a) ?? ""} askPerson={live ? a.person : null} />}
+      {r?.speech && <Bubble speaker={speakerText(a) ?? ""} text={r.speech} ai={r.speechAi} voice={voiceOf?.(a.id) ?? null} />}
+      {r?.talk && <TalkFold lines={r.talk} speaker={speakerText(a) ?? ""} askPerson={live ? a.person : null} />}
       {r?.visit && <VisitLine visit={r.visit} askPerson={live ? a.person : null} />}
     </li>
   );
@@ -289,19 +289,19 @@ export function LatestResult({
         <FreeTextLine a={action} />
         <MemoLine memo={action.memo} />
       </div>
-      {r?.speech && <Bubble speaker={calleeText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
+      {r?.speech && <Bubble speaker={speakerText(action) ?? ""} text={r.speech} ai={r.speechAi} large voice={voiceOf?.(action.id) ?? null} />}
       {r?.speech && talk ? (
         <TalkBox
           drillId={talk.drillId}
           step={talk.step}
           actions={talk.actions}
           action={action}
-          speaker={calleeText(action) ?? ""}
+          speaker={speakerText(action) ?? ""}
           name={action.person ? (names[action.person] ?? undefined) : undefined}
           voice={voiceOf?.(action.id) ?? null}
         />
       ) : (
-        r?.talk && <TalkFold lines={r.talk} speaker={calleeText(action) ?? ""} />
+        r?.talk && <TalkFold lines={r.talk} speaker={speakerText(action) ?? ""} />
       )}
       {r?.visit && <VisitLine visit={r.visit} askPerson={talk ? action.person : null} />}
       {calls.length > 0 && (

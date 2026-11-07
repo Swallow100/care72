@@ -105,7 +105,7 @@ describe("帳面の文（本人役の刻みの文）", () => {
     expect(b).toContain("予備は無く、電源が届くか停電が戻るまで戻らない");
     expect(b).toContain("予備は計画に無い");
     // 避難先の名前は渡さない（種類だけ）
-    expect(a).not.toContain("かわなぎ小学校");
+    expect(a).not.toContain("福音小学校");
   });
 
   it("前に言った「動けない」と、そのあと誰も来ていない事を書く。同居の人も書く", () => {

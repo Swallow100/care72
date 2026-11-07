@@ -101,9 +101,11 @@ describe("2. 避難先: 目次・保存", () => {
 
 describe("3. 訓練", () => {
   const call = read("../components/drill/IncomingCall.tsx");
-  it("鳴っている間は窓で画面を止めない（通話中だけ aria-modal）", () => {
-    expect(call).toContain('aria-modal={talkingNow ? "true" : undefined}');
-    expect(call).toContain("fixed right-4 bottom-4");
+  it("鳴っている間は窓で画面を止めない（通話中だけ aria-modal）。T184 から鳴っている間は下の帯", () => {
+    const ringing = call.slice(call.indexOf("if (!talkingNow) {"), call.indexOf("// 応答した通話の間だけ画面の上に重ねる"));
+    expect(ringing).not.toContain("aria-modal");
+    expect(ringing).toContain("fixed inset-x-0 bottom-0 z-50");
+    expect(call).toContain('aria-modal="true"');
   });
   it("着信の言葉は時間を進める物に読まれない", () => {
     expect(CALL_UI.later).toBe("保留");

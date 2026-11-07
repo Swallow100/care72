@@ -10,7 +10,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { JUDGE_LABEL } from "../auth/roles.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
-import { demoPersonSql } from "../auth/wall.ts";
+import { staffWallSql } from "../auth/wall.ts";
 import { unconfirmedConsents } from "../consent/unconfirmed.ts";
 import type { ConsentStatus, CustodyVia, Ledger, PersonOrigin, ReleaseKind } from "../db/types.ts";
 import { UNAFFILIATED_OFFICE_ID, type StaffActor } from "./actor.ts";
@@ -39,7 +39,7 @@ export async function receive(
               (SELECT c.status FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical,
               (SELECT c.scope FROM consents c WHERE c.person_id = p.id AND c.kind = 'medical') AS medical_scope,
               (SELECT cu.id FROM custody cu WHERE cu.person_id = p.id AND cu.holder_id = ?2 AND cu.released_at IS NULL) AS open_id
-         FROM people p WHERE p.id = ?1${actor.walled ? ` AND ${demoPersonSql("p", actor.wallOffice ?? DEMO_OFFICE_ID)}` : ""}`,
+         FROM people p WHERE p.id = ?1${staffWallSql(actor, "p", DEMO_OFFICE_ID)}`,
     )
     .bind(input.personId, actor.accountId)
     .first<{ id: string; origin: PersonOrigin; medical: ConsentStatus | null; medical_scope: string | null; open_id: string | null }>();
@@ -76,6 +76,20 @@ export async function receive(
           input.shelter,
           at,
         ),
+      // 医療班が受け入れたら、同じ人の依頼中の受入依頼（T163）を「受入」にして一覧から外す（T184）。QR・氏名検索・避難所別の
+      // どの入口から受け入れても、依頼の行に「受入」が残って二重に受け入れられる形にしない。依頼の行き先は実際の避難所に合わせる
+      // （acceptRequest と同じ。依頼の「受入」から来たときは先に accepted にしてあるので当たらない）。行政は依頼の宛先でないので閉じない
+      ...(actor.role === "medical"
+        ? [
+            db
+              .prepare(
+                `UPDATE custody_requests SET state = 'accepted', replied_by = ?2, replied_role = ?3, replied_name = ?4, replied_at = ?5,
+                        custody_id = ?6, shelter = ?7
+                  WHERE person_id = ?1 AND state = 'open'`,
+              )
+              .bind(person.id, actor.accountId, actor.role, actor.name ?? (actor.judge ? JUDGE_LABEL : null), at, id, input.shelter),
+          ]
+        : []),
     ]);
   } catch (e) {
     // 同じ人の開いた受け持ち（一意の索引）に同時に当たったとき

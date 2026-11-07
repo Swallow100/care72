@@ -9,6 +9,7 @@
 // - 同じ頁に同じ項目の欄がほかに無い（外した欄も数える。□ と括弧の組はそちらの決まりで動いている）
 // - 同じ行で、□ の左右を縦の罫線かほかの欄の枠で切った範囲に、印刷の □ が自分と、どの欄にも読まれていない □ の 2 つだけ
 // - 読まれていない □ は自分より右で、範囲の右の端の欄が項目なしの括弧の欄（「その他（　）」）。その名前が □ の名前で、□ と括弧の間に名前の字が刷ってある
+// - 読まれていない □ と括弧の間の名前の字が 1 つの塊（T181。1 字幅以上の空きで 2 つに分かれれば、□ をもう 1 つ読み落とした行）
 // - 読まれていない □ が 2 つ以上は名前が分からないので分けない。項目なしの隣の □（AI が別の □ に読んだ物）は混ぜない（別の意味のことがある）
 // 括弧の欄はそのまま残す（選ぶ欄の「その他」の中身の置き場。lib/forms/overlay-sheet.ts の placeChoice）。
 // 分けた欄は AI の読んだ物と同じく確かめの画面で人が見る（理由に「（補）」）。ここは純な計算だけ。読み取りの受け口（lib/forms/read-post.ts）が対応表を保存する前に通す。
@@ -90,7 +91,15 @@ function splitOne(f: MappingField, fields: readonly MappingField[], ink: readonl
   const start = blank.x + blank.w;
   const end = rightField.box!.x;
   if ((end - start) * image.w > (base.length + 1) * NAME_CHAR_MM) return null;
-  if (!ink.some((b) => !b.line && !b.box && inRow(b) && center(b).x > start && center(b).x < end)) return null;
+  const glyphs = ink.filter((b) => !b.line && !b.box && inRow(b) && center(b).x > start && center(b).x < end).sort((a, b) => a.x - b.x);
+  if (glyphs.length === 0) return null;
+  // 名前の字は 1 つの塊（T181）。間に 1 字幅以上の空きがあれば名前が 2 つ（「□鉄骨造 その他（　）」で 鉄骨造 の □ を読み落とし、
+  // 読まれていない □ を その他 と呼ぶと、鉄骨造 の人の印が隣の □ に付く）
+  // 1 字の大きさは字の高さの真ん中（字の幅は「他」が 2 つに割れるので使わない）。括弧の前の細い字（「（」）は名前の字に数えない
+  const charH = [...glyphs.map((g) => g.h)].sort((a, b) => a - b)[Math.floor(glyphs.length / 2)];
+  const name = [...glyphs];
+  while (name.length > 1 && name[name.length - 1].w <= charH / 2) name.pop();
+  if (name.some((g, i) => i > 0 && g.x - Math.max(...name.slice(0, i).map((p) => p.x + p.w)) >= charH)) return null;
   // 全部の選択肢が値の表に当たる
   const options = [f.label.trim(), base];
   if (options.some((o) => !codeOfOption(f.item!, o, f)?.length)) return null;

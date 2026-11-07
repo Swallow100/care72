@@ -21,6 +21,7 @@ import {
   carryMoved,
   carryPlace,
   factsOf,
+  FAR_PLACE_WORDS,
   FLOOD_AREA_M,
   helpedFlip,
   KIND_REPEAT_MAX,
@@ -48,6 +49,7 @@ import { changesWhere } from "../../../lib/drill/state-rules.ts";
 import { REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { clockStartOf, startHourOf } from "../../../lib/drill/night.ts";
 import { LOST_MAX_MINUTES } from "../../../lib/drill/lost.ts";
+import { DRILL_END_MINUTE } from "../../../lib/drill/clock.ts";
 import { AREA_GAP_MINUTES } from "../../../lib/drill/time-odds.ts";
 import type { CheckHit } from "./checks.ts";
 import type { LooseAction, LooseTurn, RunOutcome } from "./drive.ts";
@@ -67,6 +69,8 @@ export type FactPerson = {
   farPress?: boolean;
   /** 家の通信（T178。家の電波の不通を見る） */
   home?: Home;
+  /** 連絡先の id → 役の名（T182。本人役の roles と同じ contactRoles。無ければ離れた人の言い切りを見ない） */
+  roles?: Readonly<Record<string, string>>;
 };
 
 const RETURNED = /帰宅|(?:家|自宅|うち)に戻|帰って(?:き|来)|戻ってき/;
@@ -287,6 +291,12 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (field === "call.speech" && a.callee === "self" && f.voiceLost) hit("voice_lost", person, minute, "本人への電話で話した");
       // 出られない人の電話に本人が出た（T174。代わりの人が出たなら answeredBy がある）
       if (field === "call.speech" && a.callee === "self" && people[person]?.selfPhone === false && !res.answeredBy) hit("self_answer", person, minute, "出られない本人が電話で話した");
+      // 離れた家族・支援者がコードの答えでいる所を言い切った（T182。本人と同居の人だけ言い切る。本人役の言葉は見ない）
+      if (field === "talk" && Object.hasOwn(FAR_PLACE_WORDS, text) && !(res.talk ?? []).find((l) => l.text === text)?.ai) {
+        // 話し手は通話の口（hooks.ts）と同じ元: 代わりに出た人、本人、連絡先の役の名（画面の言い方の calleeLabel は「家族 夫」の形なので使わない）
+        const speaker = (typeof res.answeredBy === "string" && res.answeredBy) || (a.callee === "self" ? "本人" : typeof a.target === "string" ? (people[person]?.roles?.[a.target] ?? null) : null);
+        if (speaker && speaker !== "本人" && !(people[person]?.together ?? []).includes(speaker)) hit("far_place_said", person, minute, `talk: ${speaker} ${cut(text)}`);
+      }
       // 訪問は本人のいる所へ（T167。門と同じ。帳面のいる所、分からなければ家）
       for (const r of sentenceHits(text, field.startsWith("visit") ? { ...ctx, place: ctx.place ?? "home" } : ctx)) hit(r.rule, person, minute, `${field}: ${cut(r.text)}`);
     }
@@ -321,7 +331,14 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
     for (const [person, p] of Object.entries(people)) {
       if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person) || p.canPress === false) continue;
       const turns = byPerson.get(person) ?? [];
-      const carried = (world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived).map((a) => a.arrive);
+      // 移送の車が着いた時刻と、計画の手段で家の外へ着く時刻（T182。hooks.ts の呼び出しと同じく、移った事の記録の着く時刻から先は家にいない）
+      const carried = [
+        ...(world.arrivals ?? []).filter((a) => a.person === person && a.role === "transport" && a.arrived).map((a) => a.arrive),
+        ...turns.flatMap((u) => {
+          const m = u.move as TurnMove | undefined;
+          return m && m.to !== "home" ? [m.at] : [];
+        }),
+      ];
       const awayBy = (minute: number) => carried.some((x) => x <= minute) || turns.some((u) => Math.round(u.at * 60) <= minute && ["shelter", "other"].includes(placeOfState(stateOf(u)) ?? ""));
       for (const d of p.plan.devices) {
         const s = p.plan.spares.find((x) => x.category === d.category);
@@ -370,6 +387,12 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
         if (!turns.some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
       }
     }
+  }
+
+  // 次へ回した監督の出来事が 72 時間に着いても当たらず残った（T182。回す時刻は 72 時間で切るので 0 のはず。AI の印のある予定だけ見る）
+  if (r.ticks.some((t) => Math.round(t.hour * 60) >= DRILL_END_MINUTE)) {
+    checked += 1;
+    for (const s of (world.scheduled ?? []) as ReadonlyArray<{ at: number; ai?: boolean; person?: string }>) if (s.ai === true) hit("held_unfired", s.person ?? null, s.at, "次へ回した出来事が当たらないまま終わった");
   }
 
   // 同じ刻みの出来事と連絡（T178）。いる所を変える出来事と同じ時刻かそのあとに「家」の連絡がある形（監督を次の区切りへ回すので 0 のはず）と、
@@ -464,7 +487,7 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer" | "move_unrecorded" | "same_cut_place" | "family_away_together" | "down_gap" | "down_isolated" | "down_repeat";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer" | "move_unrecorded" | "same_cut_place" | "family_away_together" | "down_gap" | "down_isolated" | "down_repeat" | "far_place_said" | "held_unfired";
 
 /** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
 export const DOWN_SILENT_MINUTES = 240;

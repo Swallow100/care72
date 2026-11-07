@@ -27,7 +27,7 @@ import { COLOR_TONES, markItems, type MarkItem, type StateTone } from "../person
 import { toTriagePerson } from "../triage/from-ledger.ts";
 import { compareResults, type Color, type GreenVia, type Situation, type TriageResult } from "../triage/index.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
-import { demoPersonSql } from "../auth/wall.ts";
+import { staffWallSql } from "../auth/wall.ts";
 import type { StaffActor } from "./actor.ts";
 import { ARRIVAL_COLUMNS, triageArrivals, type ArrivalRow } from "./arrivals.ts";
 import { CUSTODY_LABELS, shownViaSql, type ShownVia } from "./labels.ts";
@@ -145,7 +145,7 @@ export async function loadStaffBoard(
               (SELECT s.status FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_status,
               (SELECT s.scope FROM consents s WHERE s.person_id = p.id AND s.kind = 'medical') AS medical_scope
          FROM custody c JOIN people p ON p.id = c.person_id JOIN offices o ON o.id = p.office_id
-        WHERE c.holder_id = ?1 AND c.released_at IS NULL${actor.walled ? ` AND ${demoPersonSql("p", actor.wallOffice ?? DEMO_OFFICE_ID)}` : ""}
+        WHERE c.holder_id = ?1 AND c.released_at IS NULL${staffWallSql(actor, "p", DEMO_OFFICE_ID)}
         ORDER BY c.received_at DESC, c.id`,
     )
     .bind(actor.accountId)
@@ -253,7 +253,9 @@ export async function loadStaffBoard(
         tone: COLOR_TONES[triage.color],
         ...(triage.greenVia ? { greenVia: triage.greenVia } : {}),
         reason: medicalShown ? triage.reason : "",
-        before: medicalShown ? beforeReceive(signalsOf.get(r.person_id) ?? [], r.received_at, situation) : null,
+        // 理由がもう受け入れの前の赤を言っていれば（ルールの表の案 11、T184）、同じ言葉の 2 行目を出さない
+        before:
+          medicalShown && !triage.qualifiers.includes("before_arrival") ? beforeReceive(signalsOf.get(r.person_id) ?? [], r.received_at, situation) : null,
         rank: 0,
         summary: canOpenDocument(scope, "medical"),
       },

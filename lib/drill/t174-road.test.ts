@@ -7,6 +7,7 @@ import { advance, initialState, type PersonaInput, type PersonState } from "./en
 import { blockedWhy, dropRoadSlips, factLines, factsOf, planOf, roadSlip, sentenceSlip, slipContextOf, type SlipContext } from "./person-facts.ts";
 import { buildPersona, personaTurns, type PersonaAnswer } from "./persona.ts";
 import { applyEvent, EMPTY_WORLD, type WorldState } from "./scenarios.ts";
+import { homeOf } from "./comms.ts";
 
 const seedInput = (id: string): PseudonymInput => {
   const p = SEED_PEOPLE.find((x) => x.person.id === id)!;
@@ -28,7 +29,9 @@ describe("遅れて当たる監督の道の出来事（engine）", () => {
   const said = "道が通れません。まだ誰も来ていません。";
   const persona = async (input: PersonaInput) => (input.person === P ? [{ person: P, color: "red" as const, source: "agent" as const, whereNow: null, injured: null, atHome: true, canMove: null, hasMedicine: null, saying: said, doing: null, ai: true, at: input.hour }] : []);
   const begin = async () => {
-    const s = (await advance(initialState("heavy_rain", TEN, "2026-11-05T01:00:00.000Z", { clock: true }), 0, {}))!.state;
+    // 家は台帳から写す（T182。本物の訓練と同じ。門は家の浸水の深さで閉じているかを見る）
+    const homes = Object.fromEntries(TEN.map((p) => [p, homeOf(seedInput(p).ledger)]));
+    const s = (await advance(initialState("heavy_rain", TEN, "2026-11-05T01:00:00.000Z", { clock: true }, {}, { homes }), 0, {}))!.state;
     return { ...s, world: { ...s.world, roads: [{ id: `rd-${P}`, label: "家の前の道", open: false, person: P }], touched: { [P]: 0 } } };
   };
   const reopen = async () => ({ events: [{ inject: "road_reopen" as const, person: P, text: "家の前の道が開いた", reason: "理由", ai: true }], words: [] });

@@ -29,8 +29,9 @@ const CACHE_PREFIX = "care72-";
  * 版。2（T83）: ログインの終わり（/login・/s/invalid への移り、401・403）で写しを消し、写しに 72 時間の期限を付けた。
  * 前の版の SW が残した写し（期限の切れたログインの物も）を activate で全部消すために上げた。
  * 3（T149）: 「大丈夫ですか」の通知（push・notificationclick）を足した。SW の中身を変えたら上げる決まり（components/SwRegister.tsx）に従った
+ * 4（T184）: 事業所の状態の切替（発災・平時復帰・見本の発災開始・最初に戻す）の POST でも写しを全部消す
  */
-const CACHE_VERSION = "3";
+const CACHE_VERSION = "4";
 /** 頁（HTML）の写し。人の名前・連絡先が入るので、ログイン・ログアウト・役の切替で全部消す */
 const PAGE_CACHE = CACHE_PREFIX + "pages-v" + CACHE_VERSION;
 /** 部品（/_next/static/）。中身の hash が名前に入っていて人の情報を持たないので、消すのは版を上げたときだけ */
@@ -55,8 +56,12 @@ const MAX_KEEP_ASSETS = 150;
 const NETWORK_WAIT_MS = 4000;
 /** 画面からの頼みで写し直すのは、前の写しからこの間（ミリ秒）が過ぎてから（同じ頁を 2 回取りに行かない） */
 const KEEP_MIN_MS = 60000;
-/** 写しを全部消す POST（ログイン・ログアウト・審査員の役の切替。lib/auth の route は触らない） */
-const CLEAR_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/role"];
+/**
+ * 写しを全部消す POST（ログイン・ログアウト・審査員の役の切替。lib/auth の route は触らない）。
+ * 事業所の状態の切替（/office/mode・見本の発災開始 /office/start・最初に戻す /office/reset。T184）も。写しは切り替える前の状態
+ * （平時復帰のあとに発災中の色と「大雨 レベル 4」）なので、dev や詰まった通信で読み込みが遅れたときに前の状態を出さない
+ */
+const CLEAR_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/role", "/office/mode", "/office/start", "/office/reset"];
 /**
  * ログインが終わったことを示す頁（lib/auth の LOGIN_PATH と、スマホ入口の無効の頁 PHONE_LINK_INVALID_PATH）。頁の読み込みが
  * ここへ移されたら（期限切れ・停止・パスワードの変更・リンクの再発行や一覧から外した）写しを全部消す（見直しの安全 中 4）

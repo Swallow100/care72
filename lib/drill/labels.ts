@@ -395,6 +395,14 @@ export function calleeText(a: { kind: DrillAction; calleeLabel: string | null })
   return null;
 }
 
+/**
+ * 電話に出て話した人の言い方（T182）。本人への電話に代わりの人（同居の夫など、T174 の answeredBy）が出たらその人、ほかは手の相手。
+ * 前は answeredBy を保存しても読まず、同居の夫の言葉が「本人」の名で出た。吹き出しと往復の行で同じ
+ */
+export function speakerText(a: { kind: DrillAction; calleeLabel: string | null; result?: { answeredBy?: string | undefined } | null | undefined }): string | null {
+  return a.result?.answeredBy || calleeText(a);
+}
+
 /** 「経過 3 時間 40 分」 */
 export function elapsedClockLabel(minute: number): string {
   return `${DRILL_LABELS.elapsed} ${clockLabel(minute)}`;

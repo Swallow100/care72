@@ -101,6 +101,11 @@ describe("写しの鍵", () => {
     expect(clearsCopies("POST", u("/api/auth/logout"), ORIGIN)).toBe(true);
     expect(clearsCopies("POST", u("/api/auth/role"), ORIGIN)).toBe(true);
     expect(clearsCopies("POST", u("/s/tok_1"), ORIGIN)).toBe(true);
+    // 事業所の状態の切替（T184。平時復帰のあとに発災中の写しを出さない）
+    expect(clearsCopies("POST", u("/office/mode"), ORIGIN)).toBe(true);
+    expect(clearsCopies("POST", u("/office/start"), ORIGIN)).toBe(true);
+    expect(clearsCopies("POST", u("/office/reset"), ORIGIN)).toBe(true);
+    expect(clearsCopies("GET", u("/office/mode"), ORIGIN)).toBe(false);
     expect(clearsCopies("GET", u("/api/auth/logout"), ORIGIN)).toBe(false);
     expect(clearsCopies("POST", u("/api/auth/password"), ORIGIN)).toBe(false);
     expect(clearsCopies("POST", u("/s/invalid"), ORIGIN)).toBe(false);
@@ -239,8 +244,8 @@ describe("ログインの終わりと写しの期限（T83、見直しの安全 
   });
 
   it("写しの決まりを変えたので版を上げた（activate で前の版の写しを消す）", () => {
-    expect(CACHE_VERSION).toBe("3");
-    expect(PAGE_CACHE).toBe(`${CACHE_PREFIX}pages-v3`);
+    expect(CACHE_VERSION).toBe("4");
+    expect(PAGE_CACHE).toBe(`${CACHE_PREFIX}pages-v4`);
   });
 });
 

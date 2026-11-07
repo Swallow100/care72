@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CaseMap, FullMap } from "../../components/map/CaseMap.tsx";
 import { PlaceMarks } from "../../components/map/PlaceMarks.tsx";
-import { SEED_PEOPLE } from "../../seed/people.ts";
+import { SEED_DESTINATIONS, SEED_PEOPLE } from "../../seed/people.ts";
 import { labelWidth, LABEL_H, overlaps, pinSize } from "./cluster.ts";
 import { project, type Size, type View } from "./geo.ts";
 import { MAP_UI } from "./labels.ts";
@@ -19,8 +19,11 @@ import {
   SHELTER_MAP_ZOOM,
   shelterNameIds,
   shelterTilesForView,
+  PLANNED_SAME_M,
+  withoutPlanned,
   type MapShelter,
 } from "./shelters.ts";
+import { distanceM } from "./route.ts";
 import { planPlaces } from "./side.ts";
 
 const HOME = { lat: 33.84, lng: 132.765 };
@@ -105,6 +108,16 @@ describe("2 種類を分ける", () => {
     expect(html).not.toContain("data-map-shelter=");
     expect(html).toContain("data-map-dest=");
   });
+
+  it("同じ名前でも計画の避難先から離れた避難所は出す（T184。名前と距離の両方で比べる）", () => {
+    // 約 100 m は同じ施設、約 800 m は別の施設
+    const near = shelter("架空小学校", dest.at.lat + 0.0009, dest.at.lng);
+    const far = shelter("架空小学校", dest.at.lat, dest.at.lng + 0.009);
+    expect(withoutPlanned([near, far], [dest]).map((s) => s.id)).toEqual([far.id]);
+    expect(distanceM(dest.at, near.at)).toBeLessThanOrEqual(PLANNED_SAME_M);
+    const html = marks(SHELTER_MAP_ZOOM, [near, far]);
+    expect(html.match(/data-map-shelter="/g) ?? []).toHaveLength(1);
+  });
 });
 
 describe("計画の避難先は台帳の位置のある物だけ", () => {
@@ -128,10 +141,13 @@ describe("計画の避難先は台帳の位置のある物だけ", () => {
     ]);
   });
 
-  it("種の 10 人に作った位置を入れていない（種は避難先の位置が無く、数だけ出る）", () => {
+  it("種の施設の避難先は国土地理院のデータの名前と位置（T183）。名前から位置を推さないので、位置は施設の避難先だけ", () => {
+    // 家族の家・架空の病院は位置なし（数だけ出る）。施設の名前と位置の表と戻しのテストは lib/seed/t183.test.ts
+    const named = new Set<string>(Object.values(SEED_DESTINATIONS).map((d) => d.name));
     for (const p of SEED_PEOPLE) {
-      expect(p.ledger.evacuation.destination1Location, p.person.id).toBeUndefined();
-      expect(p.ledger.evacuation.destination2Location, p.person.id).toBeUndefined();
+      const e = p.ledger.evacuation;
+      expect(!!e.destination1Location, p.person.id).toBe(named.has(e.destination1 ?? ""));
+      expect(!!e.destination2Location, p.person.id).toBe(named.has(e.destination2 ?? ""));
     }
   });
 });

@@ -11,8 +11,7 @@ import { aiStatusFor } from "@/lib/claude/cloudflare";
 import { drillGate, gateUsage } from "@/lib/claude/gate";
 import type { AiStatus } from "@/lib/claude/status";
 import { drillScope, drillStartInfo, listDrills, runningDrillId, type DrillListItem } from "@/lib/drill/db";
-import { DRILL_LABELS, progressLabel, SCENARIO_LABELS, VIRTUAL_LABELS } from "@/lib/drill/labels";
-import { endingsAllowed } from "@/lib/drill/fiction";
+import { DRILL_LABELS, progressLabel, SCENARIO_LABELS } from "@/lib/drill/labels";
 import { drillHref } from "@/lib/drill/paths";
 import { lastHour, SCENARIO_ORDER, scenarioOf } from "@/lib/drill/scenarios";
 
@@ -87,12 +86,7 @@ export default async function DrillPage() {
             {DRILL_LABELS.resume} {SCENARIO_LABELS[running.scenario]} {progressLabel(running.sim_hour, lastHour(scenarioOf(running.scenario)))}
           </ButtonLink>
         )}
-        {gate.kind === "start" && (
-          // 仮想モード（T50）の 1 行
-          <p className="w-full text-sm text-muted" data-virtual-note>
-            {scope && !endingsAllowed(scope.officeId) ? VIRTUAL_LABELS.noteRole : VIRTUAL_LABELS.note}
-          </p>
-        )}
+        {/* 仮想モード（T50）の常設の説明の 1 行は外した（T184）。訓練の画面の上に同じ 1 行がある */}
       </Panel>
 
       <div className="mt-3">

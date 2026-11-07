@@ -16,7 +16,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { ageOn } from "../age.ts";
 import { DEMO_OFFICE_ID } from "../auth/demo.ts";
 import { JUDGE_LABEL } from "../auth/roles.ts";
-import { demoPersonSql } from "../auth/wall.ts";
+import { staffWallSql } from "../auth/wall.ts";
 import type { CustodyRequestState } from "../db/types.ts";
 import type { OfficeActor } from "../office/scope.ts";
 import type { StaffActor } from "./actor.ts";
@@ -29,6 +29,8 @@ export type RequestHit = {
   personId: string;
   kana: string;
   age: number | null;
+  /** 依頼元の事業所の id（一括受入のまとめの鍵。同じ名前の別の事業所を 1 つにしない、T184） */
+  officeId: string;
   /** 依頼元の事業所の名前 */
   office: string;
   /** 行き先（受け入れたときの避難所） */
@@ -55,7 +57,7 @@ export function seesRequests(actor: Pick<StaffActor, "role">): boolean {
 }
 
 function wallOf(actor: Pick<StaffActor, "walled" | "wallOffice">, alias = "p"): string {
-  return actor.walled ? ` AND ${demoPersonSql(alias, actor.wallOffice ?? DEMO_OFFICE_ID)}` : "";
+  return staffWallSql(actor, alias, DEMO_OFFICE_ID);
 }
 
 const MEDICAL_GRANTED = (alias: string) =>
@@ -126,14 +128,24 @@ export async function withdrawRequest(
   return { ok: true, personId: row.person_id, custodyId: null };
 }
 
-type HitRow = { id: string; person_id: string; kana: string; birth_date: string | null; reported_age: number | null; office: string; shelter: string; requested_at: string };
+type HitRow = {
+  id: string;
+  person_id: string;
+  kana: string;
+  birth_date: string | null;
+  reported_age: number | null;
+  office_id: string;
+  office: string;
+  shelter: string;
+  requested_at: string;
+};
 
 /** 医療班に出す依頼中の一覧（古い順）。行政・ほかの役は空。審査員はデモの人の依頼だけ */
 export async function openRequests(db: D1Database, actor: StaffActor, today: string): Promise<RequestHit[]> {
   if (!seesRequests(actor)) return [];
   const res = await db
     .prepare(
-      `SELECT r.id, r.person_id, p.kana, p.birth_date, p.reported_age, o.name AS office, r.shelter, r.requested_at
+      `SELECT r.id, r.person_id, p.kana, p.birth_date, p.reported_age, r.office_id, o.name AS office, r.shelter, r.requested_at
          FROM custody_requests r JOIN people p ON p.id = r.person_id JOIN offices o ON o.id = r.office_id
         WHERE r.state = 'open'${wallOf(actor)}
         ORDER BY r.requested_at, r.id`,
@@ -144,6 +156,7 @@ export async function openRequests(db: D1Database, actor: StaffActor, today: str
     personId: r.person_id,
     kana: r.kana,
     age: (r.birth_date ? ageOn(r.birth_date, today) : r.reported_age) ?? null,
+    officeId: r.office_id,
     office: r.office,
     shelter: r.shelter,
     requestedAt: r.requested_at,
@@ -212,6 +225,19 @@ export async function acceptRequest(db: D1Database, actor: StaffActor, requestId
   }
   await db.prepare("UPDATE custody_requests SET custody_id = ?2, shelter = ?3 WHERE id = ?1").bind(requestId, custodyId, held).run();
   return { ok: true, personId: req.person_id, custodyId };
+}
+
+/**
+ * 本人の依頼中の行き先（QR の頁の受入の既定、T184）。医療班の役だけで、無ければ null。審査員はデモの人の依頼だけ。
+ * 受入一覧の避難所の欄の値（?shelter=）より先に使う（欄の既定は最近の受入の避難所で、依頼の行き先の病院と食い違った）
+ */
+export async function openRequestShelter(db: D1Database, actor: StaffActor, personId: string): Promise<string | null> {
+  if (!seesRequests(actor)) return null;
+  const r = await db
+    .prepare(`SELECT r.shelter FROM custody_requests r JOIN people p ON p.id = r.person_id WHERE r.person_id = ?1 AND r.state = 'open'${wallOf(actor)}`)
+    .bind(personId)
+    .first<{ shelter: string }>();
+  return r?.shelter ?? null;
 }
 
 /** 受入不可を返す（医療班の役）。依頼中だけ */

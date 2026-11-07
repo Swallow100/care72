@@ -25,8 +25,10 @@ import {
 import { issuedSec, linkTarget, type LinkTarget } from "../qr/phone-link-store.ts";
 import { phoneAccountById, phoneAccountByLoginId, phoneAccountTarget } from "../phone/account.ts";
 import { MAX_PASSWORD_LENGTH, verifyPassword } from "./password.ts";
-import { homePath, type JudgeRole, type JudgeSessionRole, type Role } from "./roles.ts";
-import { createSandbox, loadSandboxAdmin, SANDBOX_START_PATH } from "../office/sandbox.ts";
+import { homePath, type JudgeRole, type JudgeSessionRole, type Role, type SandboxTarget } from "./roles.ts";
+import { createSandbox, loadSandboxAdmin, SANDBOX_START_PATH, type SandboxAdmin } from "../office/sandbox.ts";
+import type { ContactKind } from "../db/types.ts";
+import { isSignalWriterKind } from "../signals/labels.ts";
 import {
   passwordVersion,
   PHONE_SESSION_TTL_SEC,
@@ -64,6 +66,12 @@ export type Principal = {
    * judge も付いたまま（壁の中・役変更が出る）。事業所はその試用事業所、書き手と担当一覧の持ち主は試用事業所の管理者のアカウント。無いのは false
    */
   sandbox?: boolean;
+  /**
+   * このセッションの試用事業所の管理者のアカウント（judge の b、T180）。審査員のセッションに b があればどの役でも付く（役の一覧に
+   * 新規事業所の中の役を並べるため）。デモの役のときは確かめていない id なので、使う所は loadSandboxAdmin を通す。新規事業所の中の役
+   * （sandbox が付いている時）は確かめたあと
+   */
+  sandboxAdmin?: string;
   /**
    * 本人・家族の入り方（T149）。link はスマホ入口のリンク（T69a）、account は本人・家族の ID とパスワード（lib/phone/account.ts）。
    * 審査員・役を替えた山本の本人・家族の役とほかの役には付けない。ID を作れるのは link だけ
@@ -145,21 +153,101 @@ async function demoRolePrincipal(db: D1Database, office: OfficeRef, p: Principal
  * 審査員の試用事業所の管理者の形（T115）。sandboxId はセッションの b。試用事業所が無い（毎朝 4 時に消えた・まだ作っていない）・
  * 管理者の形でないなら null（呼ぶ側は役選択へ送る）
  */
-async function sandboxPrincipal(db: D1Database, sandboxId: string | undefined): Promise<Principal | null> {
+async function sandboxPrincipal(
+  db: D1Database,
+  sandboxId: string | undefined,
+  target: SandboxTarget | null = null,
+): Promise<Principal | null> {
   if (!sandboxId) return null;
   const a = await loadSandboxAdmin(db, sandboxId);
   if (!a) return null;
-  return {
-    ...NOBODY,
-    role: "care_manager",
-    judge: true,
-    sandbox: true,
-    admin: a.admin,
-    accountId: a.accountId,
-    displayName: a.displayName || null,
-    office: a.office,
-    caseloadOf: a.accountId,
-  };
+  const base: Omit<Principal, "role"> = { ...NOBODY, judge: true, sandbox: true, sandboxAdmin: sandboxId, office: a.office };
+  if (target === null || (target.role === "care_manager" && target.id === a.accountId)) {
+    return {
+      ...base,
+      role: "care_manager",
+      admin: a.admin,
+      accountId: a.accountId,
+      displayName: a.displayName || null,
+      caseloadOf: a.accountId,
+    };
+  }
+  return sandboxTargetPrincipal(db, a, base, target);
+}
+
+/**
+ * 新規事業所の中の役（T180）。相手は毎回 D1 で、b の試用事業所の中か・審査員が作った物か（ケアマネは judge_made の印・停止していない、
+ * 本人は一覧にいる、家族は答えられる種類の連絡先）を確かめる。外れれば null（呼ぶ側は役選択へ）。
+ * 試用事業所の中の物は審査員のセッションの b からしか入れないので、人と連絡先は事業所が合えば審査員が作った物。
+ * 医療班・本人・家族の書き手は試用事業所の管理者のアカウント（受け持ち・経過・信号が試用事業所の中に残り、毎朝 4 時の掃除で消える）
+ */
+async function sandboxTargetPrincipal(
+  db: D1Database,
+  a: SandboxAdmin,
+  base: Omit<Principal, "role">,
+  target: SandboxTarget,
+): Promise<Principal | null> {
+  const officeId = a.office.id;
+  switch (target.role) {
+    case "care_manager": {
+      const cm = await db
+        .prepare(
+          `SELECT id, display_name, is_office_admin FROM accounts
+            WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager' AND judge_made = 1 AND disabled_at IS NULL`,
+        )
+        .bind(target.id, officeId)
+        .first<{ id: string; display_name: string; is_office_admin: 0 | 1 }>();
+      if (!cm) return null;
+      return {
+        ...base,
+        role: "care_manager",
+        admin: Number(cm.is_office_admin) === 1,
+        accountId: cm.id,
+        displayName: cm.display_name || null,
+        caseloadOf: cm.id,
+      };
+    }
+    case "medical":
+      return { ...base, role: "medical", accountId: a.accountId };
+    case "self": {
+      const person = await db
+        .prepare("SELECT id, name FROM people WHERE id = ?1 AND office_id = ?2 AND unlisted_at IS NULL")
+        .bind(target.id, officeId)
+        .first<{ id: string; name: string }>();
+      if (!person) return null;
+      return { ...base, role: "self", accountId: a.accountId, personId: person.id, displayName: person.name };
+    }
+    case "family": {
+      const c = await db
+        .prepare(
+          `SELECT c.id, c.name, c.kind, c.person_id FROM contacts c JOIN people p ON p.id = c.person_id
+            WHERE c.id = ?1 AND p.office_id = ?2 AND p.unlisted_at IS NULL`,
+        )
+        .bind(target.id, officeId)
+        .first<{ id: string; name: string | null; kind: ContactKind; person_id: string }>();
+      if (!c || !isSignalWriterKind(c.kind)) return null;
+      return { ...base, role: "family", accountId: a.accountId, personId: c.person_id, contactId: c.id, displayName: c.name };
+    }
+  }
+}
+
+/** セッションの sr・st から新規事業所の中の役（T180）。無いのは管理者。形が合わなければ invalid（役選択に落とす） */
+function sessionTarget(s: Extract<SessionPayload, { k: "judge" }>): SandboxTarget | null | "invalid" {
+  if (s.sr === undefined) return s.st === undefined ? null : "invalid";
+  if (s.sr === "medical") return s.st === undefined ? { role: "medical" } : "invalid";
+  return s.st === undefined ? "invalid" : { role: s.sr, id: s.st };
+}
+
+/** セッションに入れる sr・st（管理者の役は付けない。T115 と同じ形） */
+function targetFields(t: SandboxTarget | null, adminId: string): { sr?: JudgeRole; st?: string } {
+  if (t === null || (t.role === "care_manager" && t.id === adminId)) return {};
+  return t.role === "medical" ? { sr: "medical" } : { sr: t.role, st: t.id };
+}
+
+/** 審査員のセッションから新規事業所の中の役の印（sr・st）を外す（デモの役・管理者の役に替えるとき） */
+function withoutTarget(s: Extract<SessionPayload, { k: "judge" }>): Extract<SessionPayload, { k: "judge" }> {
+  const { sr: _sr, st: _st, ...rest } = s;
+  return rest;
 }
 
 /**
@@ -172,17 +260,28 @@ async function judgePrincipal(
   role: JudgeSessionRole | null,
   sandboxId: string | undefined,
   judgeAccount: string,
+  target: SandboxTarget | null | "invalid" = null,
 ): Promise<Principal | null> {
   if (!isJudgeAccount(judgeAccount)) return null;
   const office = await demoOffice(db);
   if (!office) return null;
   const unselected = role === null || role === "sandbox";
-  const p: Principal = { ...NOBODY, role: unselected ? "unselected" : role, judge: true, accountId: judgeAccount, office };
+  const p: Principal = {
+    ...NOBODY,
+    role: unselected ? "unselected" : role,
+    judge: true,
+    accountId: judgeAccount,
+    office,
+    // 役の一覧に新規事業所の中の役を並べるため（T180。確かめるのは使う所）
+    ...(sandboxId ? { sandboxAdmin: sandboxId } : {}),
+  };
   switch (role) {
     case null:
       return p;
     case "sandbox":
-      return (await sandboxPrincipal(db, sandboxId)) ?? p;
+      // 相手が外れた（消した・外した・形が違う）ときも、役を選ぶ前と同じ（役選択の画面へ）
+      if (target === "invalid") return p;
+      return (await sandboxPrincipal(db, sandboxId, target)) ?? p;
     case "care_manager": {
       const cm = await db
         .prepare("SELECT display_name FROM accounts WHERE id = ?1 AND office_id = ?2 AND role = 'care_manager'")
@@ -305,7 +404,7 @@ async function principalOf(db: D1Database, env: AuthEnv, secret: string, s: Sess
   if (s.k === "judge") {
     const c = judgeCredential(env);
     if (!c || (await credentialVersion(c, secret)) !== s.pv) return null;
-    return judgePrincipal(db, s.r, s.b, judgeAccountOf(s));
+    return judgePrincipal(db, s.r, s.b, judgeAccountOf(s), s.r === "sandbox" ? sessionTarget(s) : null);
   }
   if (s.k === "link") return linkPrincipal(db, s);
   if (s.k === "phone") return phoneSessionPrincipal(db, s);
@@ -419,7 +518,8 @@ export async function chooseJudgeRole(
   // 試用事業所の b（T115）と書き手の a（T144）は残す（「新規事業所」を選び直すと同じ事業所へ戻る）
   const principal = await judgePrincipal(db, role, s.b, judgeAccountOf(s));
   if (!principal) return null;
-  const next = await signSession({ ...s, r: role, ...sessionTimes(now) }, secret);
+  // 新規事業所の中の役の印（T180）は外す（デモの役は 4 つのまま）
+  const next = await signSession({ ...withoutTarget(s), r: role, ...sessionTimes(now) }, secret);
   return { token: next, principal, path: homePath(role) };
 }
 
@@ -452,8 +552,31 @@ export async function chooseSandbox(
   }
   const principal = await sandboxPrincipal(db, sandboxId);
   if (!principal) return { ok: false, error: "forbidden" };
-  const next = await signSession({ ...s, r: "sandbox", b: sandboxId, ...sessionTimes(now) }, secret);
+  // 「新規事業所」は管理者の役（T180 の中の役の印は外す）
+  const next = await signSession({ ...withoutTarget(s), r: "sandbox", b: sandboxId, ...sessionTimes(now) }, secret);
   return { ok: true, token: next, principal, path: SANDBOX_START_PATH, created };
+}
+
+/**
+ * 新規事業所の中の役に替える（T180、app/api/auth/role）。審査員のセッションで、b の試用事業所が生きているときだけ。
+ * 相手（ケアマネ・本人・家族の id）はここでも D1 で b の事業所の中かを確かめ、外なら forbidden（ほかの審査員の試用事業所・デモ・本物の事業所の id）。
+ * 試用事業所が無ければ作らない（先に「新規事業所」を選ぶ）。送り先はその役の入口（ケアマネは担当一覧、医療班は受入一覧、本人・家族はスマホの頁）
+ */
+export async function chooseSandboxRole(
+  db: D1Database,
+  env: AuthEnv,
+  secret: string,
+  token: string | null | undefined,
+  target: SandboxTarget,
+  now: number,
+): Promise<{ token: string; principal: Principal; path: string } | null> {
+  const s = await verifySession(token, secret, now);
+  if (!s || s.k !== "judge" || !s.b || !(await principalOf(db, env, secret, s))) return null;
+  const principal = await sandboxPrincipal(db, s.b, target);
+  if (!principal) return null;
+  const fields = targetFields(target, s.b);
+  const next = await signSession({ ...withoutTarget(s), r: "sandbox", b: s.b, ...fields, ...sessionTimes(now) }, secret);
+  return { token: next, principal, path: homePath(principal.role) };
 }
 
 /**

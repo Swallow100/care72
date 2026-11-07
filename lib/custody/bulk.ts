@@ -39,13 +39,20 @@ export async function runBulk(
   return out;
 }
 
-export type OfficeRequests = { office: string; requests: RequestHit[] };
+export type OfficeRequests = { officeId: string; office: string; requests: RequestHit[] };
 
-/** 受入依頼を事業所ごとにまとめる。事業所の順はいちばん古い依頼の順、中は来た順のまま（渡された行だけで、ほかの人を足さない） */
+/**
+ * 受入依頼を事業所ごとにまとめる。事業所の順はいちばん古い依頼の順、中は来た順のまま（渡された行だけで、ほかの人を足さない）。
+ * 鍵は事業所の id（T184。名前でまとめると、同じ名前の別の事業所の依頼が 1 つの「全選択」に入る）
+ */
 export function requestsByOffice(requests: readonly RequestHit[]): OfficeRequests[] {
-  const groups = new Map<string, RequestHit[]>();
-  for (const r of requests) groups.set(r.office, [...(groups.get(r.office) ?? []), r]);
-  return [...groups].map(([office, rows]) => ({ office, requests: rows }));
+  const groups = new Map<string, OfficeRequests>();
+  for (const r of requests) {
+    const g = groups.get(r.officeId);
+    if (g) g.requests.push(r);
+    else groups.set(r.officeId, { officeId: r.officeId, office: r.office, requests: [r] });
+  }
+  return [...groups.values()];
 }
 
 /** 1 人を選ぶ・外す。上限を超えては足さない */

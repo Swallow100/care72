@@ -14,7 +14,6 @@ import { seedStatements } from "../../seed/sql.ts";
 import type { Principal } from "../auth/principal.ts";
 import { d1FromSqlite, migratedSqlite } from "../db/test-d1.ts";
 import { DRILL_SCENARIOS } from "../db/types.ts";
-import { CLOCK_LABELS } from "./clock.ts";
 import { drillScope, listDrills, loadDrillRow, startDrill, stateOfRow } from "./db.ts";
 import { listGet, replayGet, startPost, stepPost } from "./http.ts";
 import { DRILL_API_LABELS, SCENARIO_LABELS, T124_LABELS } from "./labels.ts";
@@ -84,16 +83,10 @@ describe("開始の画面（components/drill/StartButtons）", () => {
     expect(buttons.filter((m) => m[0].includes("bg-accent-fill")).map((m) => m[1])).toEqual(["heavy_rain"]);
   });
 
-  it("進め方の 1 行: 訓練の画面と同じ（T128 で次までだけ）で次までを本文色、最後までは自動進行（前の早送り）", () => {
+  it("進め方の 1 行は出さない（T184。切り替えでなく説明で、押せそうに見えて読み違えた）", () => {
     const html = draw();
-    const line = html.slice(html.indexOf("data-start-pace"), html.indexOf("</p>", html.indexOf("data-start-pace")));
-    const text = line.replace(/<[^>]+>/g, "");
-    expect(text).toContain(`${T124_LABELS.pace} ${CLOCK_LABELS.next}`);
-    expect(text).not.toMatch(/手の分|30 分|1 時間|3 時間/);
-    expect(text).toContain(`${T124_LABELS.toEnd} 自動進行`);
-    expect(line).toContain(`<span class="font-bold text-ink">${CLOCK_LABELS.next}</span>`);
-    // 常設の説明文にしない（句点を持たない短い 1 行）
-    expect(text).not.toMatch(/[。、]/);
+    expect(html).not.toContain("data-start-pace");
+    expect(html.replace(/<[^>]+>/g, "")).not.toContain(T124_LABELS.pace);
   });
 
   it("押すと送る物: どの想定も連続の時計と手の決まり。設定で選んだ物はそのまま足す", () => {

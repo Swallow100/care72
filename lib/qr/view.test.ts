@@ -122,7 +122,7 @@ describe("出す範囲（医療要約から氏名の全部と住所を除く）"
     expect(html).toContain("中断注意");
     expect(html).toContain("在宅酸素療法（HOT）");
     expect(html).toContain("090-0000-0011");
-    expect(html).toContain("かわなぎ小学校");
+    expect(html).toContain("福音小学校");
     expect(html).toContain(`data-pending-list="`);
     // 紙面と同じ順: カナ → 生年月日 → 避難先 → 禁忌 → 特記 → 常用薬 → メディカル ID
     const at = (k: string) => html.indexOf(`data-field="${k}"`);

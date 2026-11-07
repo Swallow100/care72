@@ -6,7 +6,7 @@
 
 import { place, type Size, type View } from "@/lib/map/geo";
 import { markPath } from "@/lib/map/route-image";
-import { candidateKinds, SHELTER_MAP_ZOOM, shelterNameIds, type MapShelter } from "@/lib/map/shelters";
+import { candidateKinds, SHELTER_MAP_ZOOM, shelterNameIds, withoutPlanned, type MapShelter } from "@/lib/map/shelters";
 import { MAP_UI } from "@/lib/map/labels";
 import type { MapDestination } from "@/lib/map/side";
 import { ROUTE_LABELS as L } from "@/lib/labels";
@@ -56,10 +56,8 @@ export function PlaceMarks({
   };
   const inFrame = (p: { px: number; py: number }) => p.px > -CULL && p.px < size.w + CULL && p.py > -CULL && p.py < size.h + CULL;
   const dests = destinations.map(at).filter(inFrame);
-  // 計画の避難先と同じ施設は計画の方だけ出す（同じ名前で旗が重なる）
-  const planned = new Set(destinations.map((d) => d.name));
-  const marks = shelters
-    .filter((s) => !planned.has(s.name))
+  // 計画の避難先と同じ施設は計画の方だけ出す（同じ名前で旗が重なる）。名前と距離の両方で比べる（T184。同じ名前の別の場所は出す）
+  const marks = withoutPlanned(shelters, destinations)
     .map(at)
     .filter(inFrame);
   const names = shelterNameIds(

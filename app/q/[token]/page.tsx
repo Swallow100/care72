@@ -11,6 +11,7 @@ import { getPrincipal } from "@/lib/auth/server";
 import { nowSec, sessionSecret } from "@/lib/auth/session";
 import { staffActor } from "@/lib/custody/actor";
 import { parseShelter } from "@/lib/custody/forms";
+import { openRequestShelter } from "@/lib/custody/requests";
 import { lastShelter } from "@/lib/custody/store";
 import { QR_LABELS } from "@/lib/qr/labels";
 import { resolveQrToken } from "@/lib/qr/store";
@@ -32,7 +33,8 @@ type Props = { params: Promise<{ token: string }>; searchParams: Promise<{ shelt
 // 壁はトークン（署名・期限 90 日・今の版。lib/qr/store.ts）。出すのは医療要約の範囲から氏名の全部と住所を除いた物（lib/qr/view.ts）。
 // 医療班提供の同意が無い人は「同意なし」「未確認」だけ。無効のトークンは「無効」だけで、経過にも残さない。
 // 開いたら経過に「QR 閲覧」（相手・範囲・時刻）。医療班・行政でログインしていれば「受入」（避難所を入れて受け持ちに入れる。T23）。
-// 受入一覧の「QR 読取」から来たときは、受入一覧の避難所の欄の値（?shelter=）を受入の既定に（T152。無ければ自分が最近に受け入れた所）。
+// 受入の既定は、医療班への依頼中なら依頼の行き先（T184）、次に受入一覧の「QR 読取」から来たときの受入一覧の避難所の欄の値
+// （?shelter=、T152）、無ければ自分が最近に受け入れた所。
 export default async function QrViewPage({ params, searchParams }: Props) {
   const { token } = await params;
   const asked = (await searchParams).shelter;
@@ -57,10 +59,11 @@ export default async function QrViewPage({ params, searchParams }: Props) {
     consent: medicalConsentOf(person.rows),
     nowIso: new Date().toISOString(),
   });
-  // 医療班・行政なら「受入」（T23）。避難所の既定は自分がいちばん最近に受け入れた所
+  // 医療班・行政なら「受入」（T23）。避難所の既定は上の順
   const staff = staffActor(principal);
   const fromList = typeof asked === "string" ? parseShelter(asked) : null;
-  const shelter = staff ? (fromList?.ok ? fromList.value : await lastShelter(env.DB, staff)) : null;
+  const requested = staff ? await openRequestShelter(env.DB, staff, hit.p) : null;
+  const shelter = staff ? (requested ?? (fromList?.ok ? fromList.value : await lastShelter(env.DB, staff))) : null;
   const expiresAt = new Date(hit.exp * 1000).toISOString();
 
   return (
