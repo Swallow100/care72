@@ -974,10 +974,11 @@ const yesNoOwner = (f: MappingField) => f.shape === "choice" && f.options.length
  * - 親が種類でない □（「□アレルギー（　）」）: 今までどおり項目の値（T161。□ に印、括弧の中に中身）
  * - 親が選ぶ欄（「□その他（　）」「□洪水（～）」）: 空。親の選択肢の添え・その他の値を、紙（overlay-sheet.ts の placeChoice）がこの欄の枠に置く
  */
-export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx): Cell {
+export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx, writtenElsewhere = false): Cell {
   if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
-  // あり・なし の選ぶ欄の「あり（　）」（T181）: あり の中身を書く所。値があれば項目の値（あり に印は親の選ぶ欄）、無ければ空（「なし」は親の印）
-  if (own.option !== null && yesNoOwner(own.owner) && YES.test(normalizeWord(own.owner.options[own.option] ?? ""))) return cell.kind === "value" ? cell : EMPTY;
+  // あり・なし の選ぶ欄の「あり（　）」（T181）: あり の中身を書く所。値があれば項目の値（あり に印は親の選ぶ欄）、無ければ空（「なし」は親の印）。
+  // 同じ項目の値をほかの字の欄（別の頁も）に書く様式では書かない（同じ値を 2 か所に書くと見直しの重複）
+  if (own.option !== null && yesNoOwner(own.owner) && YES.test(normalizeWord(own.owner.options[own.option] ?? ""))) return cell.kind === "value" && !writtenElsewhere ? cell : EMPTY;
   if (own.option !== null) return EMPTY;
   const item = own.owner.item;
   if (!item) return cell;
@@ -1031,7 +1032,8 @@ export function buildMappedSheet(rows: PersonPageRows, mapping: FormMapping, opt
     const base = phoneRole(mappedCell(held.has(field.id) ? { ...field, item: null } : field, ctx), field, mapping.fields);
     // 並びの終わりの「その他（　）」に違う項目（T164、form-shape.ts の strayOther）: 違う欄に書かない
     const stray = !own && !held.has(field.id) && base.kind !== "withheld" && strayOther(field, shown);
-    const cell = own ? bracketCell(base, own, ctx) : stray ? EMPTY : markSlot(field, shown) && base.kind === "none" ? EMPTY : base;
+    const elsewhere = !!own && shown.some((g) => g !== field && !g.removed && g.item === field.item && g.shape !== "handwrite" && (g.shape === "text" || g.shape === "lines" || g.shape === "date" || g.shape === "phone") && !brackets.has(g.id));
+    const cell = own ? bracketCell(base, own, ctx, elsewhere) : stray ? EMPTY : markSlot(field, shown) && base.kind === "none" ? EMPTY : base;
     const name = field.section ? `${field.section} ${field.label}` : field.label;
     if (cell.kind === "withheld") withheld.add(cell.consent);
     else if (isUnconfirmed(cell)) unconfirmedLabels.push(name);

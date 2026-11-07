@@ -129,6 +129,15 @@ describe("T181 2 「□なし □あり（　）」の括弧の中に値を書�
     expect(paper(m, "p-01")).toMatchObject({ marks: [0.3], texts: [], unplaced: [] });
   });
 
+  it("同じ項目の値を別の頁の字の欄にも書く様式では、括弧に書かない（同じ値を 2 か所に書かない）", () => {
+    const other = fld({ page: 2, section: "", label: "アレルギーの内容", shape: "lines", item: allergies, box: box(0.2, 0.4, 0.6, 0.05) });
+    const m = read([no, yes, bracket(), other], 2);
+    const sheet = buildMappedSheet(seedRows(seed("p-03")), m, OPTS);
+    const cells = new Map(sheet.pages.flatMap((p) => p.sections.flatMap((s) => s.rows.map((r) => [r.field.label, r.cell.kind] as const))));
+    expect(cells.get("あり（　）")).toBe("empty");
+    expect(cells.get("アレルギーの内容")).toBe("value");
+  });
+
   it("選ぶ欄 1 つと括弧に読んだ形も同じ紙", () => {
     const choice = fld({ label: "アレルギー", shape: "choice", item: allergies, options: ["なし", "あり"], box: box(0.3, 0.3, 0.55, 0.016), option_boxes: [box(0.3, 0.3, 0.012, 0.01), box(0.4, 0.3, 0.012, 0.01)] });
     const m = read([choice, bracket()]);
