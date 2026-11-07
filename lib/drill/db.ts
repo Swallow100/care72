@@ -75,6 +75,8 @@ import { EMPTY_WORLD, isInjectKind, isVirtual, SCENARIO_ORDER, scenarioOf, type 
 import { isDrillScale, pickScale, seededRand } from "./scale.ts";
 import { hasRealGeo, type RealGeo, type RealGeoRequest } from "./real-geo.ts";
 import { homeTowns } from "./self.ts";
+import { overParticipants, PARTICIPANTS_LIMIT, T186_LABELS } from "./options.ts";
+import { DEPENDENCE_MARKS, deviceText } from "../labels.ts";
 import type { PseudonymInput } from "../pseudonym/index.ts";
 import { castScenario, mayBeCalled, needsCast, type Cast } from "./cast.ts";
 import { castFactsMap } from "./cast-facts.ts";
@@ -492,7 +494,20 @@ export type CaseloadPerson = {
   canPress: boolean;
   /** 本人役を呼びうる想定（開始の前の見込み、lib/drill/estimate.ts） */
   callable: DrillScenario[];
+  /** 台帳の町名（T186。参加者を選ぶ一覧に出す）。無ければ null */
+  town: string | null;
+  /** 台帳の要点（T186。医療依存の印〔時計の無い人は機器〕と独居。参加者を選ぶ一覧に出す） */
+  facts: string[];
 };
+
+/** 参加者を選ぶ一覧の台帳の要点（T186）: 医療依存の印（担当一覧と同じ並び）、時計の無い人は機器、独居 */
+export function startFactsOf(src: Pick<PseudonymInput, "ledger" | "clocks"> | undefined): string[] {
+  if (!src) return [];
+  const categories = new Set(src.clocks.map((k) => k.category));
+  const marks = DEPENDENCE_MARKS.filter(([c]) => categories.has(c)).map(([, label]) => label);
+  const devices = marks.length > 0 ? [] : src.ledger.medical.devices.map(deviceText);
+  return [...marks, ...devices, ...(src.ledger.basic.household === "alone" ? [T186_LABELS.alone] : [])];
+}
 
 /**
  * 担当一覧の人を、開始の前の参加者の選択に（名前・押せる人の有無・本人役を呼びうる想定）。台帳は事業所の分を 1 回の batch で読む。
@@ -516,6 +531,8 @@ export async function drillStartInfo(db: D1Database, scope: DrillScope): Promise
     name: r.name,
     canPress: facts.get(r.id)?.canPress ?? false,
     callable: SCENARIO_ORDER.filter((s) => mayBeCalled(scenarioOf(s), r.id, facts)),
+    town: sources.get(r.id)?.ledger.basic.address?.town?.trim() || null,
+    facts: startFactsOf(sources.get(r.id)),
   }));
   const ledgers = rows.flatMap((r) => {
     const s = sources.get(r.id);
@@ -533,9 +550,10 @@ async function caseloadPeople(db: D1Database, scope: DrillScope): Promise<string
  * 外の id・重なり・0 人は null（断る）
  */
 export function pickParticipants(caseload: ReadonlyArray<string>, chosen: ReadonlyArray<string> | undefined): string[] | null {
-  if (chosen === undefined) return [...caseload];
+  // T186: 上限（PARTICIPANTS_LIMIT）を越える開始は断る。担当一覧が上限を越えるのに選んでいない開始も黙って切らずに断る
+  if (chosen === undefined) return overParticipants(caseload.length) ? null : [...caseload];
   const want = new Set(chosen);
-  if (want.size === 0 || want.size !== chosen.length || [...want].some((p) => !caseload.includes(p))) return null;
+  if (want.size === 0 || want.size !== chosen.length || want.size > PARTICIPANTS_LIMIT || [...want].some((p) => !caseload.includes(p))) return null;
   return caseload.filter((p) => want.has(p));
 }
 
