@@ -721,13 +721,13 @@ function musicVolume(frame: number, voice: Assets["voice"]): number {
 // 声の終わりは測った声の最後の区切り（字幕の枠の終わりまで下げると、声の後に音の無い間ができる）
 function musicTarget(frame: number, voice: Assets["voice"]): number {
   const s = frame / FPS;
-  for (const scene of SCENES) for (const shot of scene.shots) if (shot.emphasis && s >= shot.at && s < shot.end) return 0.05;
+  for (const scene of SCENES) for (const shot of scene.shots) if (shot.emphasis && s >= shot.at && s < shot.end) return 0.12;
   for (const line of LINES) {
     const segs = voice?.[line.id];
     const end = segs && segs.length > 0 ? Math.min(line.end, line.at + segs[segs.length - 1][1]) : line.end;
-    if (s >= line.at - 0.2 && s < end + 0.2) return 0.12;
+    if (s >= line.at - 0.2 && s < end + 0.2) return 0.3;
   }
-  return 0.3;
+  return 0.6;
 }
 
 const sceneOf = (seconds: number): Scene => SCENES.find((s) => seconds >= s.at && seconds < s.end) ?? SCENES[0];

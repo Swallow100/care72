@@ -31,7 +31,7 @@
 | N11 | 1:08.4–1:13.2 | 項目分けされアプリ内に見やすく記録されます。 | It is sorted into fields and kept clearly in the app. |
 | N12 | 1:13.4–1:21.7 | 記録から自治体の形式の個別避難計画、本人保管書類、災害時医療班用の要約を作成できます。 | From the record: the city's plan form, a sheet for the client to keep, and a summary for the disaster medical team. |
 | N15 | 1:22.2–1:31.6 | 次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。 | Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client. |
-| N17 | 1:31.8–1:41.5 | 72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の動きなど、さまざまな状況が起こります。 | In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves acting on their own. |
+| N17 | 1:31.8–1:41.5 | 72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の怪我など、さまざまな状況が起こります。 | In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves getting hurt. |
 | N18 | 1:45–1:51.4 | ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。 | Just like the real thing, the care manager can call, and arrange evacuation or power. |
 | N19 | 1:51.5–2:04.9 | 終わると Opus が対応を採点し、今回は山田ハナさんの酸素が間に合わなかったこと、連絡順の上の人から手を打つべきことを、出典付きで講評しました。 | At the end, Opus scores the response. This time, citing sources, it pointed out that Hana Yamada's oxygen ran short, and that the care manager should act from the top of the contact order. |
 | N20 | 2:05–2:10.5 | そして実際の発災時。地震が発生し災害モードに切り替えました。 | Then a real disaster. An earthquake hits, and disaster mode is on. |

@@ -523,7 +523,7 @@ export const LINES: Line[] = [
   { id: "N11", at: 68.4, end: 73.2, ja: "項目分けされアプリ内に見やすく記録されます。", en: "It is sorted into fields and kept clearly in the app." },
   { id: "N12", at: 73.4, end: 81.7, ja: "記録から自治体の形式の個別避難計画、本人保管書類、災害時医療班用の要約を作成できます。", en: "From the record: the city's plan form, a sheet for the client to keep, and a summary for the disaster medical team." },
   { id: "N15", at: 82.2, end: 91.6, ja: "次は訓練。Opus が災害状況を細かくシミュレーションし Haiku が利用者一人一人になりきり行動します。", en: "Next, the drill. Opus simulates the disaster in detail, and Haiku plays each client." },
-  { id: "N17", at: 91.8, end: 101.5, ja: "72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の動きなど、さまざまな状況が起こります。", en: "In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves acting on their own." },
+  { id: "N17", at: 91.8, end: 101.5, ja: "72 時間のシミュレーション訓練では、停電や断水、電波不良や利用者自身の怪我など、さまざまな状況が起こります。", en: "In the 72-hour drill, all kinds of things happen: power cuts, water outages, bad signal, and the clients themselves getting hurt." },
   { id: "N18", at: 105, end: 111.4, ja: "ケアマネジャーは本番と同じように電話したり、避難や電源の手配を行ったりできます。", en: "Just like the real thing, the care manager can call, and arrange evacuation or power." },
   { id: "N19", at: 111.5, end: 124.9, ja: "終わると Opus が対応を採点し、今回は山田ハナさんの酸素が間に合わなかったこと、連絡順の上の人から手を打つべきことを、出典付きで講評しました。", en: "At the end, Opus scores the response. This time, citing sources, it pointed out that Hana Yamada's oxygen ran short, and that the care manager should act from the top of the contact order." },
   { id: "N20", at: 125, end: 130.5, ja: "そして実際の発災時。地震が発生し災害モードに切り替えました。", en: "Then a real disaster. An earthquake hits, and disaster mode is on." },
