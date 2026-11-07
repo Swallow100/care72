@@ -319,7 +319,7 @@ export function PersonReviews({ persons, names }: { persons: ShownPersons; names
   if (order.length === 0) return null;
   const at = open ? order.indexOf(open) : -1;
   return (
-    <section className="space-y-1" data-review-persons aria-label={REVIEW_UI.persons}>
+    <section className="space-y-1 text-sm" data-review-persons aria-label={REVIEW_UI.persons}>
       <h4 className={`${LABEL} flex items-center gap-1.5`}>
         {REVIEW_UI.persons}
         <AiMark title="AI（Haiku）が訓練の間に作った人ごとの講評。数字は機械の数え" />

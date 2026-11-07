@@ -456,7 +456,25 @@ const PERSON_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** 今の人ごとの講評（訓練の間でも読む。採点の前の殻も） */
 export async function readPersons(db: D1Database, officeId: string, id: string): Promise<StoredPersons> {
-  return parsePersons(safeJson((await readStored(db, officeId, id))?.text ?? null)?.persons);
+  return (await readPersonsState(db, officeId, id)).persons;
+}
+
+/** 人ごとの講評と、刻みの裏で呼んだ回数（T185） */
+export async function readPersonsState(db: D1Database, officeId: string, id: string): Promise<{ persons: StoredPersons; tickCalls: number }> {
+  const v = safeJson((await readStored(db, officeId, id))?.text ?? null);
+  return { persons: parsePersons(v?.persons), tickCalls: typeof v?.personsTickCalls === "number" ? v.personsTickCalls : 0 };
+}
+
+/** 刻みの裏で呼んだ回数を足す */
+export async function addTickCalls(db: D1Database, officeId: string, id: string, n: number): Promise<void> {
+  if (n <= 0) return;
+  await db
+    .prepare(
+      `UPDATE drills SET score = json_set(COALESCE(score, '{}'), '$.personsTickCalls', COALESCE(json_extract(score, '$.personsTickCalls'), 0) + ?3)
+        WHERE id = ?1 AND office_id = ?2`,
+    )
+    .bind(id, officeId, n)
+    .run();
 }
 
 /**

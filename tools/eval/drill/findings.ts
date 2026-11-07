@@ -20,6 +20,7 @@ const ROLE_FILES: Readonly<Record<string, string[]>> = {
   world_room: ["lib/drill/world-room.ts", "lib/drill/world-apply.ts"],
   free: ["lib/drill/free-action.ts"],
   review: ["lib/drill/review.ts"],
+  review_person: ["lib/drill/person-review.ts", "lib/drill/record-http.ts"],
 };
 const roleFiles = (role: string | undefined) => ROLE_FILES[role ?? ""] ?? ["lib/claude/call.ts"];
 

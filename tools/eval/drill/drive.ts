@@ -16,7 +16,7 @@ import { drillFreeHook } from "../../../lib/drill/free-action.ts";
 import { drillStepHooks, drillTalkHook } from "../../../lib/drill/hooks.ts";
 import type { StartDeps } from "../../../lib/drill/db.ts";
 import { actionPost, replayGet, startPost, stepPost } from "../../../lib/drill/http.ts";
-import { callPost, reviewPost } from "../../../lib/drill/record-http.ts";
+import { callPost, personReviewsAfterStep, reviewPost } from "../../../lib/drill/record-http.ts";
 import { callTalkPost } from "../../../lib/drill/incoming-talk.ts";
 import { callsOf } from "../../../lib/drill/calls.ts";
 import { warekiText } from "../../../lib/forms/wareki.ts";
@@ -440,6 +440,8 @@ export async function runDrill(plan: RunPlan, deps: DriveDeps): Promise<RunOutco
       await call("advance", sb, () => stepPost(db, p, drillId, sb, now(), stepHooks));
       advances += 1;
       replay = await read(drillId);
+      // 人ごとの講評（T185）。本物は刻みの応答のあとの waitUntil で、台は待ってから続ける（講評を回す時だけ）
+      if (deps.review && replay.drill.status === "running") await personReviewsAfterStep(env, p, drillId, { claude: deps.client, now: nowDate });
       // 着信に出て往復（T127。--answer-calls のときだけ）。今の刻みの電話の着信から 1 つ
       if (deps.answerCalls && replay.drill.status === "running") {
         const tick = replay.ticks.find((t) => t.step === replay.drill.step);

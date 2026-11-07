@@ -22,6 +22,9 @@ import {
   PERSON_REVIEW_SYSTEM,
   PERSON_TRIES_MAX,
   PERSONS_PER_TICK,
+  PERSON_TICK_CALLS_MAX,
+  PERSONS_AT_END,
+  PERSONS_PER_CALL,
   personBody,
   planPersons,
   type StoredPersons,
@@ -84,7 +87,10 @@ function fake(answer: (p: Params) => Message) {
   return { client, calls };
 }
 
-const byModel = (p: Params) => (p.model === HAIKU ? reply(PERSON_ANSWER, HAIKU) : reply(OVERALL, OPUS));
+/** 人ごとの講評はまとめて呼ぶ（入力の「## 仮名」の節ごとに 1 人分を返す） */
+const aliasesOf = (p: Params) => [...recordOf(p).matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+const personsAnswer = (p: Params) => ({ persons: aliasesOf(p).map((person) => ({ person, ...PERSON_ANSWER })) });
+const byModel = (p: Params) => (p.model === HAIKU ? reply(personsAnswer(p), HAIKU) : reply(OVERALL, OPUS));
 const haiku = (cs: Params[]) => cs.filter((p) => p.model === HAIKU);
 const opus = (cs: Params[]) => cs.filter((p) => p.model === OPUS);
 const recordOf = (p: Params) => (JSON.parse(p.messages[0].content as string) as { 記録: { text: string } }).記録.text;
@@ -145,7 +151,7 @@ async function finish(id: string) {
 const rawScore = (id: string) => (sqlite.prepare("SELECT score FROM drills WHERE id = ?").get(id) as { score: string | null }).score;
 
 describe("人ごとの講評を訓練の間に作る", () => {
-  it("落ち着いた人（前の刻みと同じ流れ）だけ作り、流れが変わらなければ作り直さない。後で手が入れば作り直す", async () => {
+  it("落ち着いた人（前の刻みと同じ流れ）を 1 回にまとめて作り、刻みの裏では作り直さない。後で手が入った人は終わりに作り直す", async () => {
     await start("d1");
     await act("d1", "call_person", "p-03");
     const f = fake(byModel);
@@ -155,12 +161,11 @@ describe("人ごとの講評を訓練の間に作る", () => {
     await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
     expect(f.calls).toHaveLength(0);
     expect((await readPersons(db, DEMO.id, "d1"))["p-03"]?.seen).toMatch(/^[0-9a-f]{8}$/);
-    // 2 回目の刻み: 流れが同じ → 作る（手か着信のある人だけ。1 刻みに PERSONS_PER_TICK 人まで）
+    // 2 回目の刻み: 流れが同じ → 作る（手か着信のある人だけ。1 刻みに 1 回、PERSONS_PER_TICK 人まで）
     await step("d1");
     await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
-    const first = haiku(f.calls).length;
-    expect(first).toBeGreaterThanOrEqual(1);
-    expect(first).toBeLessThanOrEqual(PERSONS_PER_TICK);
+    expect(haiku(f.calls)).toHaveLength(1);
+    expect(aliasesOf(f.calls[0]).length).toBeLessThanOrEqual(PERSONS_PER_TICK);
     expect(f.calls[0].model).toBe(PERSON_REVIEW_SPEC.model);
     expect(systemOf(f.calls[0])).toContain(PERSON_REVIEW_SYSTEM);
     const sent = haiku(f.calls).map(recordOf).find((t) => t.includes("本人電話 → "))!;
@@ -176,17 +181,17 @@ describe("人ごとの講評を訓練の間に作る", () => {
     await step("d1");
     await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
     expect((await readPersons(db, DEMO.id, "d1"))["p-03"]?.tries).toBe(1);
-    // 後で手が入る → 印が変わり、落ち着いた所で作り直す（先に、まだ作っていない人を作る）
+    // 後で手が入る → 刻みの裏では作り直さない（まだ作っていない人だけ。刻みの裏の呼び出しは PERSON_TICK_CALLS_MAX 回まで）
     await act("d1", "call_person", "p-03");
-    let tries = 1;
-    for (let i = 0; i < 8 && tries < 2; i++) {
-      if ((await step("d1")) !== "running") break;
-      await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
-      tries = (await readPersons(db, DEMO.id, "d1"))["p-03"]?.tries ?? 0;
-    }
-    expect(tries).toBe(2);
+    while ((await step("d1")) === "running") await personReviewsAfterStep(ENV(), careManager(), "d1", opts);
+    expect((await readPersons(db, DEMO.id, "d1"))["p-03"]?.tries).toBe(1);
+    expect(haiku(f.calls).length).toBeLessThanOrEqual(PERSON_TICK_CALLS_MAX);
+    // 終わりの講評で、流れの変わった p-03 を作り直す
+    expect((await reviewPost(ENV(), careManager(), "d1", {}, opts)).status).toBe(200);
+    const end = await readPersons(db, DEMO.id, "d1");
+    expect(end["p-03"]?.tries).toBe(2);
     // 1 人の回数は PERSON_TRIES_MAX まで
-    for (const r of Object.values(await readPersons(db, DEMO.id, "d1"))) expect(r.tries).toBeLessThanOrEqual(PERSON_TRIES_MAX);
+    for (const r of Object.values(end)) expect(r.tries).toBeLessThanOrEqual(PERSON_TRIES_MAX);
   });
 
   it("鍵が無ければ作らない。作る印を取られていれば作らない", async () => {
@@ -363,5 +368,13 @@ describe("講評の画面と紙", () => {
     expect(h).toContain("総評。");
     expect(h).not.toContain("項目別");
     expect(h).not.toContain("個別講評");
+  });
+});
+
+describe("呼び出しの数", () => {
+  it("人ごとの講評は 1 回の訓練に、刻みの裏 PERSON_TICK_CALLS_MAX 回と終わり 3 回まで（参加者の数によらず 7 回まで）", () => {
+    expect(PERSON_TICK_CALLS_MAX + Math.ceil(PERSONS_AT_END / PERSONS_PER_CALL)).toBeLessThanOrEqual(7);
+    expect(PERSON_REVIEW_SPEC.timeoutMs).toBeLessThanOrEqual(20_000);
+    expect(PERSON_REVIEW_SPEC.maxRetries).toBe(0);
   });
 });

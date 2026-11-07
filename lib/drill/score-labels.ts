@@ -214,8 +214,8 @@ export const REVIEW_UI = {
   personNext: "次回",
   open: "開く",
   close: "閉じる",
-  prev: "前へ",
-  next: "次へ",
+  prev: "前",
+  next: "次",
 } as const;
 
 /** 全体の講評の項目の中身の無いとき（T185。AI にこの言葉で返させ、画面はこの項目を出さない） */

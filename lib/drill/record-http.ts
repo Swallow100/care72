@@ -21,7 +21,9 @@ import {
   personText,
   planPersons,
   PERSON_USAGE_RESERVE,
+  PERSON_TICK_CALLS_MAX,
   PERSONS_AT_END,
+  PERSONS_PER_CALL,
   PERSONS_PER_TICK,
   runPersonReviews,
   shownPersons,
@@ -35,7 +37,8 @@ import {
   liveReviewContext,
   loadDrillRecord,
   parseStoredScore,
-  readPersons,
+  addTickCalls,
+  readPersonsState,
   releasePersons,
   reviewContextOf,
   savePerson,
@@ -209,11 +212,13 @@ export async function makePersonReviews(
       print: personPrint(personText(live, person, aliasOf, { words })),
       active: hasActivity(live, person),
     }));
-    const stored = await readPersons(db, officeId, id);
-    const plan = planPersons(prints, stored, mode, room);
+    const { persons: stored, tickCalls } = await readPersonsState(db, officeId, id);
+    // 刻みの裏で呼ぶのは 1 回の訓練に PERSON_TICK_CALLS_MAX 回まで（残りは終わりにまとめて）
+    const plan = planPersons(prints, stored, mode, mode === "tick" && tickCalls >= PERSON_TICK_CALLS_MAX ? 0 : room);
     const make = new Set(plan.make);
     await saveSeen(db, officeId, id, Object.fromEntries(Object.entries(plan.seen).filter(([p]) => !make.has(p))));
     if (plan.make.length === 0) return { ...stored };
+    if (mode === "tick") await addTickCalls(db, officeId, id, Math.ceil(plan.make.length / PERSONS_PER_CALL));
     const made = await runPersonReviews(
       { ai: deps.ai, key, aliasOf, now: deps.now },
       live,

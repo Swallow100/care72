@@ -55,12 +55,19 @@ export type StoredPerson = {
 
 export type StoredPersons = Record<string, StoredPerson>;
 
-/** 1 人の講評の数（作り直しを含む）。参加者 20 人（T186）で 1 回の訓練に最大 60 回 */
-export const PERSON_TRIES_MAX = 3;
-/** 1 刻みに作る人数（Workers の外への接続は同時に 6 本。本人役の呼び出しと重ならないように少なめ） */
-export const PERSONS_PER_TICK = 3;
-/** 終わったあと全体の講評と並べて作る人数の上限（全体の講評〔Opus〕と同時に開く接続を 5 本までに） */
-export const PERSONS_AT_END = 8;
+/** 1 人の講評を作る数（訓練の間に 1 回、終わりに流れが変わっていれば作り直しの 1 回） */
+export const PERSON_TRIES_MAX = 2;
+/**
+ * 1 回の呼び出しにまとめる人数。偽の台（評価の訓練 10 人）で 1 人 1 回にすると 1 回の訓練に 23〜25 回増え、
+ * AI の呼び出しの守り（1 回 77 回まで）を越えたので、まとめて呼ぶ（docs/progress/t185.md）
+ */
+export const PERSONS_PER_CALL = 4;
+/** 刻みの裏で呼ぶ回数の上限（1 回の訓練に。1 刻みに 1 回） */
+export const PERSON_TICK_CALLS_MAX = 4;
+/** 1 刻みに作る人数（1 回の呼び出し分） */
+export const PERSONS_PER_TICK = PERSONS_PER_CALL;
+/** 終わったあと全体の講評と並べて作る人数の上限（4 人ずつ 3 回まで。全体の講評〔Opus〕と同時に開く接続を 4 本までに） */
+export const PERSONS_AT_END = PERSONS_PER_CALL * 3;
 /** 1 日の上限に残す回数（全体の講評 1 回と、本人役の 1 刻み分）。これを割るなら人ごとの講評は作らない */
 export const PERSON_USAGE_RESERVE = 12;
 
@@ -73,18 +80,19 @@ export const PERSON_ITEM_TEXT_MAX = 100;
 
 /**
  * 人ごとの講評の呼び方。用途は scoring（講評として数える。ai_calls の CHECK はそのまま、録音のまとめと同じ形）。
- * 刻みの応答のあとの waitUntil（30 秒）に収めるため、録音のまとめ（RECORDING_SUMMARY）と同じ Haiku・4000・20 秒・再試行なし。
- * 入力は 1 人分で短く、言葉は表の手の名前と時刻を並べ直すだけなので medium
+ * 刻みの応答のあとの waitUntil（30 秒）に収めるため、録音のまとめ（RECORDING_SUMMARY）と同じ Haiku・20 秒・再試行なし。
+ * 4 人分の返事（1 人 300 字ほど）を収めるため上限 6000、言葉は機械の数と手の履歴を並べ直すだけなので考える深さは low
  */
-export const PERSON_REVIEW_SPEC: PurposeSpec = { model: HAIKU, effort: "medium", maxTokens: 4000, timeoutMs: 20_000, maxRetries: 0 };
+export const PERSON_REVIEW_SPEC: PurposeSpec = { model: HAIKU, effort: "low", maxTokens: 6000, timeoutMs: 20_000, maxRetries: 0 };
 
 export const PERSON_REVIEW_SYSTEM = [
-  "災害の訓練（発災から 72 時間。人は全部架空）で、ケアマネが 1 人の利用者（本人）に打った手と、その結果を振り返る講評を書く。",
-  "入力は JSON の「記録」（その人の分だけ）。",
+  "災害の訓練（発災から 72 時間。人は全部架空）で、ケアマネが利用者 1 人ずつ（本人）に打った手と、その結果を振り返る講評を書く。",
+  "入力は JSON の「記録」。「## 仮名」の節ごとに 1 人分（その人の分だけ）。",
   "",
   ...REVIEW_WORLD_LINES,
   "",
-  "返す JSON:",
+  "返す JSON: persons（入力の節の人ごとに 1 つ、節の順に）。各要素:",
+  "- person: 節の見出しの仮名（「A さん」）",
   `- text: その人への対応の講評（${PERSON_TEXT_ASK} 字まで、2〜4 文）。いつ・どの手を打ち、どうなったか（届いた時刻・時計の期限・左の表の色の移り）を、手の履歴の時刻と上の手の言葉で書く。`,
   `- good: 良かった手（${PERSON_ITEM_MAX} つまで、1 つ ${PERSON_ITEM_ASK} 字まで）。時刻と手の名前で。無ければ空の配列。`,
   `- next: 次の訓練で試す事（${PERSON_ITEM_MAX} つまで、1 つ ${PERSON_ITEM_ASK} 字まで）。上の手の言葉で。無ければ空の配列。`,
@@ -100,11 +108,14 @@ export const PERSON_REVIEW_SYSTEM = [
   "8. 手の履歴が無ければ、手が無かった事と、次に試す最初の手を書く。",
 ].join("\n");
 
-export const PersonReviewSchema = z.object({
+const PersonAnswer = z.object({
+  person: z.string(),
   text: z.string(),
   good: z.array(z.string()),
   next: z.array(z.string()),
 });
+
+export const PersonReviewSchema = z.object({ persons: z.array(PersonAnswer) });
 
 export function buildPersonReviewRequest(record: ForClaude<{ text: string }>): AskJsonRequest<typeof PersonReviewSchema> {
   return {
@@ -223,8 +234,9 @@ export type PersonPlan = {
 };
 
 /**
- * 作る人を決める（DB も AI も触らない）。tick は刻みの裏（前の刻みと同じ印＝落ち着いた人だけ）、end は終わり（印の変わった人を全部）。
- * まだ作っていない人を先に、参加者の並びの順。作り直しは PERSON_TRIES_MAX 回まで、同じ印の失敗は刻みの裏では作り直さない
+ * 作る人を決める（DB も AI も触らない）。tick は刻みの裏: まだ作っていない人のうち、前の刻みと同じ印（落ち着いた）で手か着信のある人だけ
+ * （同じ印の失敗は作り直さない）。end は終わり: まだ作っていない人と、作った時から印の変わった人（作り直し）を全部。
+ * まだ作っていない人を先に、参加者の並びの順。1 人 PERSON_TRIES_MAX 回まで、room 人まで
  */
 export function planPersons(
   prints: ReadonlyArray<{ person: string; print: string; active: boolean }>,
@@ -240,9 +252,7 @@ export function planPersons(
     if (s?.seen !== print) seen[person] = print;
     if (s?.done?.print === print) continue;
     if ((s?.tries ?? 0) >= PERSON_TRIES_MAX) continue;
-    if (mode === "tick") {
-      if (!active || s?.seen !== print || s?.failed?.print === print) continue;
-    }
+    if (mode === "tick" && (s?.done || !active || s?.seen !== print || s?.failed?.print === print)) continue;
     (s?.done ? redo : fresh).push(person);
   }
   return { make: [...fresh, ...redo].slice(0, Math.max(0, room)), seen };
@@ -250,10 +260,10 @@ export function planPersons(
 
 // ---------- 作る ----------
 
-export type PersonOutcome = { ok: true; body: PersonReviewBody; model: string } | { ok: false; error: ReviewError };
+export type PersonOutcome = { ok: true; bodies: ReadonlyMap<string, PersonReviewBody>; model: string } | { ok: false; error: ReviewError };
 
-/** 返事を人ごとの講評にする。使わない言葉に掛かった文だけ捨てる。何も残らなければ null */
-export function personBody(answer: z.output<typeof PersonReviewSchema>, key: PseudonymKey): PersonReviewBody | null {
+/** 返事の 1 人分を人ごとの講評にする。使わない言葉に掛かった文だけ捨てる。何も残らなければ null */
+export function personBody(answer: Omit<z.output<typeof PersonAnswer>, "person">, key: PseudonymKey): PersonReviewBody | null {
   const items = (xs: ReadonlyArray<string>) => {
     const out: string[] = [];
     for (const x of xs) {
@@ -270,18 +280,30 @@ export function personBody(answer: z.output<typeof PersonReviewSchema>, key: Pse
   return { text, good, next };
 }
 
-/** 1 人の講評を 1 回作る（投げない。失敗は error） */
-export async function createPersonReview(
+/** まとめて呼ぶ入力の文（「## 仮名」の節を人ごとに） */
+export function personsText(ctx: ReviewContext, people: ReadonlyArray<string>, aliasOf: ReadonlyMap<string, string>, words?: (t: string) => string | null): string {
+  return people.map((p) => [`## ${aliasOf.get(p) ?? "（不明）"}`, personText(ctx, p, aliasOf, words ? { words } : {})].join("\n")).join("\n\n");
+}
+
+/** 何人かの講評を 1 回で作る（投げない。失敗は error。返事に無い人・知らない仮名は入れない） */
+export async function createPersonReviews(
   deps: { ai: AskJsonContext; key: PseudonymKey; aliasOf: ReadonlyMap<string, string> },
   ctx: ReviewContext,
-  person: string,
+  people: ReadonlyArray<string>,
 ): Promise<PersonOutcome> {
   try {
-    const record = pseudonymizeText(personText(ctx, person, deps.aliasOf, { words: (t) => maskReply(t, deps.key) }), deps.key);
+    const record = pseudonymizeText(personsText(ctx, people, deps.aliasOf, (t) => maskReply(t, deps.key)), deps.key);
     const r = await askJson(buildPersonReviewRequest(record), deps.ai);
-    const body = personBody(r.value, deps.key);
-    if (!body) return { ok: false, error: "bad_output" };
-    return { ok: true, body, model: r.model };
+    const byAlias = new Map(people.map((p) => [deps.aliasOf.get(p)?.replace(/\s+/g, ""), p]));
+    const bodies = new Map<string, PersonReviewBody>();
+    for (const x of r.value.persons) {
+      const p = byAlias.get(x.person.replace(/\s+/g, ""));
+      if (!p || bodies.has(p)) continue;
+      const body = personBody(x, deps.key);
+      if (body) bodies.set(p, body);
+    }
+    if (bodies.size === 0) return { ok: false, error: "bad_output" };
+    return { ok: true, bodies, model: r.model };
   } catch (e) {
     const code = reviewError(e);
     if (code) return { ok: false, error: code };
@@ -291,7 +313,8 @@ export async function createPersonReview(
 }
 
 /**
- * 決めた人の講評を並べて作り、1 人分ずつ保存の形にして返す（save に渡す）。上限に当たったら残りは作らない
+ * 決めた人の講評を PERSONS_PER_CALL 人ずつまとめて並べて呼び、1 人分ずつ保存の形にして返す（save に渡す）。
+ * 返事に無かった人は失敗（bad_output）として回数に数える
  */
 export async function runPersonReviews(
   deps: Pick<ReviewDeps, "ai"> & { key: PseudonymKey; aliasOf: ReadonlyMap<string, string>; now: () => string },
@@ -301,19 +324,27 @@ export async function runPersonReviews(
   save: (person: string, rec: StoredPerson) => Promise<void>,
 ): Promise<StoredPersons> {
   const out: StoredPersons = {};
-  let limited = false;
+  const chunks: string[][] = [];
+  for (let i = 0; i < plan.make.length; i += PERSONS_PER_CALL) chunks.push(plan.make.slice(i, i + PERSONS_PER_CALL));
   await Promise.all(
-    plan.make.map(async (person) => {
-      if (limited) return;
-      const print = plan.prints.get(person)!;
-      const before = stored[person] ?? { tries: 0 };
-      const r = await createPersonReview(deps, ctx, person);
-      if (!r.ok && r.error === "limit") limited = true;
-      const rec: StoredPerson = r.ok
-        ? { seen: print, tries: before.tries + 1, done: { ...r.body, print, at: deps.now(), model: r.model } }
-        : { seen: print, tries: before.tries + 1, ...(before.done ? { done: before.done } : {}), failed: { print, at: deps.now(), error: r.error } };
-      out[person] = rec;
-      await save(person, rec);
+    chunks.map(async (people) => {
+      const r = await createPersonReviews(deps, ctx, people);
+      for (const person of people) {
+        const print = plan.prints.get(person)!;
+        const before = stored[person] ?? { tries: 0 };
+        const body = r.ok ? r.bodies.get(person) : undefined;
+        const rec: StoredPerson =
+          r.ok && body
+            ? { seen: print, tries: before.tries + 1, done: { ...body, print, at: deps.now(), model: r.model } }
+            : {
+                seen: print,
+                tries: before.tries + 1,
+                ...(before.done ? { done: before.done } : {}),
+                failed: { print, at: deps.now(), error: r.ok ? "bad_output" : r.error },
+              };
+        out[person] = rec;
+        await save(person, rec);
+      }
     }),
   );
   return out;

@@ -279,7 +279,7 @@ describe("講評（Opus 1 回）", () => {
 
   it("仮名だけを渡し、登録簿に無い根拠・医療の助言・知らない仮名の指摘は捨てる。仮名は氏名に戻して残す。2 回目は呼ばない", async () => {
     await finishedWithActions();
-    const f = fake((p) => (p.model === HAIKU ? reply({ text: "本人への本人電話は早かった。", good: [], next: [] }, HAIKU) : reply(ANSWER, OPUS)));
+    const f = fake((p) => (p.model === HAIKU ? reply({ persons: [] }, HAIKU) : reply(ANSWER, OPUS)));
     const res = await reviewPost(ENV(), careManager(), "d1", {}, { claude: f.client, now: () => new Date(LATER) });
     expect(res.status).toBe(200);
     expect(opusCalls(f.calls)).toHaveLength(1);
