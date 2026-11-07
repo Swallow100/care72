@@ -47,15 +47,18 @@ describe("2. 計画の手段で移った人の機器の検査", () => {
 describe("8. 離れた人のいる所の言い切り", () => {
   const P = "p-03";
   const together = CTX.facts![P].together;
-  const act = (calleeLabel: string, text: string, ai = false): LooseAction =>
-    ({ id: "a1", person: P, kind: "call_contact", callee: "c-x", calleeLabel, atMinute: 120, result: { atMinute: 120, status: "connected", speech: "はい。", talk: [{ who: "cm", text: "今どこですか" }, { who: "them", text, ai }] } }) as unknown as LooseAction;
+  const roles = CTX.facts![P].roles!;
+  const idOf = (far: boolean) => Object.keys(roles).find((id) => roles[id] !== "本人" && together.includes(roles[id]) !== far)!;
+  // 画面の言い方（calleeLabel）は「家族 夫」の形。話し手は連絡先の id から役の名で見る
+  const act = (far: boolean, text: string, ai = false): LooseAction =>
+    ({ id: "a1", person: P, kind: "call_contact", callee: "family", target: idOf(far), calleeLabel: `家族 ${roles[idOf(far)]}`, atMinute: 120, result: { atMinute: 120, status: "connected", speech: "はい。", talk: [{ who: "cm", text: "今どこですか" }, { who: "them", text, ai }] } }) as unknown as LooseAction;
 
   it("離れた家族のコードの答えの言い切りを数える。同居の人・はずです・本人役の言葉は数えない", () => {
     expect(together.length).toBeGreaterThan(0);
-    expect(rulesOf(run([endTick], [act("離れた家族", "家にいます。")]), P)).toContain("far_place_said");
-    expect(rulesOf(run([endTick], [act(together[0], "家にいます。")]), P)).not.toContain("far_place_said");
-    expect(rulesOf(run([endTick], [act("離れた家族", "家にいるはずです。")]), P)).not.toContain("far_place_said");
-    expect(rulesOf(run([endTick], [act("離れた家族", "家にいます。", true)]), P)).not.toContain("far_place_said");
+    expect(rulesOf(run([endTick], [act(true, "家にいます。")]), P)).toContain("far_place_said");
+    expect(rulesOf(run([endTick], [act(false, "家にいます。")]), P)).not.toContain("far_place_said");
+    expect(rulesOf(run([endTick], [act(true, "家にいるはずです。")]), P)).not.toContain("far_place_said");
+    expect(rulesOf(run([endTick], [act(true, "家にいます。", true)]), P)).not.toContain("far_place_said");
   });
 });
 

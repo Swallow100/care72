@@ -69,6 +69,8 @@ export type FactPerson = {
   farPress?: boolean;
   /** 家の通信（T178。家の電波の不通を見る） */
   home?: Home;
+  /** 連絡先の id → 役の名（T182。本人役の roles と同じ contactRoles。無ければ離れた人の言い切りを見ない） */
+  roles?: Readonly<Record<string, string>>;
 };
 
 const RETURNED = /帰宅|(?:家|自宅|うち)に戻|帰って(?:き|来)|戻ってき/;
@@ -291,7 +293,8 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       if (field === "call.speech" && a.callee === "self" && people[person]?.selfPhone === false && !res.answeredBy) hit("self_answer", person, minute, "出られない本人が電話で話した");
       // 離れた家族・支援者がコードの答えでいる所を言い切った（T182。本人と同居の人だけ言い切る。本人役の言葉は見ない）
       if (field === "talk" && Object.hasOwn(FAR_PLACE_WORDS, text) && !(res.talk ?? []).find((l) => l.text === text)?.ai) {
-        const speaker = (typeof res.answeredBy === "string" && res.answeredBy) || (a.callee === "self" ? "本人" : typeof a.calleeLabel === "string" ? a.calleeLabel : null);
+        // 話し手は通話の口（hooks.ts）と同じ元: 代わりに出た人、本人、連絡先の役の名（画面の言い方の calleeLabel は「家族 夫」の形なので使わない）
+        const speaker = (typeof res.answeredBy === "string" && res.answeredBy) || (a.callee === "self" ? "本人" : typeof a.target === "string" ? (people[person]?.roles?.[a.target] ?? null) : null);
         if (speaker && speaker !== "本人" && !(people[person]?.together ?? []).includes(speaker)) hit("far_place_said", person, minute, `talk: ${speaker} ${cut(text)}`);
       }
       // 訪問は本人のいる所へ（T167。門と同じ。帳面のいる所、分からなければ家）
