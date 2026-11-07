@@ -338,7 +338,7 @@ describe("講評の画面と紙", () => {
         { topic: "order" as const, text: "連絡の順の文。" },
         { topic: "visit" as const, text: "該当なし" },
       ],
-      good: ["好手の文。"],
+      good: ["良い対応の文。"],
       model: OPUS,
       at: START,
     },
@@ -346,10 +346,10 @@ describe("講評の画面と紙", () => {
   };
   const persons = { "p-03": { text: "加藤さんの講評。", good: ["良い手。"], next: ["次の手。"], at: START } };
 
-  it("画面: 好手・項目別（該当なしは出さない）・指摘と、人ごとの講評を名前で開く行。AI の印", () => {
+  it("画面: 良い対応・項目別（該当なしは出さない）・指摘と、人ごとの講評を名前で開く行。AI の印", () => {
     const h = renderToStaticMarkup(createElement(ReviewBox, { drillId: "d1", initial: done, persons, canReview: true, names }));
-    expect(h).toContain("好手");
-    expect(h).toContain("好手の文。");
+    expect(h).toContain("良い対応");
+    expect(h).toContain("良い対応の文。");
     expect(h).toContain("項目別");
     expect(h).toContain("連絡順");
     expect(h).not.toContain("訪問手配");

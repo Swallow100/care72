@@ -208,7 +208,7 @@ export const REVIEW_UI = {
   /** 全体の講評の項目（T185） */
   topics: "項目別",
   /** 良かった所（T185） */
-  good: "好手",
+  good: "良い対応",
   /** 人ごとの講評（T185）と、その中の欄 */
   persons: "個別講評",
   personNext: "次回",

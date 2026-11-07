@@ -478,7 +478,7 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                 {t(shown.summary)}
               </p>
             )}
-            {/* 好手と項目別（T185。前の講評には無い） */}
+            {/* 良い対応と項目別（T185。前の講評には無い） */}
             {shown.good && shown.good.length > 0 && (
               <p data-review-good>
                 <span className="f-l">{REVIEW_UI.good}</span>

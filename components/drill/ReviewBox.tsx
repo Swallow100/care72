@@ -241,7 +241,7 @@ export function ReviewBox({
   );
 }
 
-/** 講評の文（総評・好手・項目別・指摘）。根拠は登録簿の物だけ。好手と項目別は T185 から（前の講評には無い） */
+/** 講評の文（総評・良い対応・項目別・指摘）。根拠は登録簿の物だけ。良い対応と項目別は T185 から（前の講評には無い） */
 export function ReviewText({ shown, names }: { shown: ReviewBody; names: Readonly<Record<string, string>> }) {
   const sections = (shown.sections ?? []).filter((s) => s.text !== REVIEW_SECTION_NONE);
   return (
@@ -310,7 +310,7 @@ function Basis({ id }: { id: string }) {
 }
 
 /**
- * 人ごとの講評（T185）。参加者の並び（names の順）に 1 人 1 行、名前で開く。開いた人は講評・好手・次回と、前へ・次へで送る。
+ * 人ごとの講評（T185）。参加者の並び（names の順）に 1 人 1 行、名前で開く。開いた人は講評・良い対応・次回と、前へ・次へで送る。
  * AI の印（Haiku が作った下書き）
  */
 export function PersonReviews({ persons, names }: { persons: ShownPersons; names: Readonly<Record<string, string>> }) {
