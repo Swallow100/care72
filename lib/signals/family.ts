@@ -171,18 +171,27 @@ function historyWords(rows: PersonPageRows, w: FamilyWriter, t: Entry): Word[] |
 export function familyHistory(rows: PersonPageRows, w: FamilyWriter, limit = 8): FamilyHistoryItem[] | null {
   if (!familyMayReadHistory(rows)) return null;
   const items: FamilyHistoryItem[] = [];
+  const kindOf = new Map<string, string>();
   for (const t of rows.timeline) {
     // 撤回した行（T63）は家族に出さない（やさしい画面に取り消し線の形は無い）
     if (!FAMILY_HISTORY_KINDS.includes(t.kind) || t.retracted_at) continue;
     const words = historyWords(rows, w, t);
-    if (words) items.push({ id: t.id, at: t.occurred_at, when: familyWhen(t.occurred_at), words });
+    if (words) {
+      items.push({ id: t.id, at: t.occurred_at, when: familyWhen(t.occurred_at), words });
+      kindOf.set(t.id, t.kind);
+    }
   }
-  return items
-    .map((item, i) => ({ item, i, t: Date.parse(item.at) }))
-    .sort((a, b) => b.t - a.t || b.i - a.i)
-    .slice(0, limit)
-    .map((x) => x.item);
+  const sorted = items.map((item, i) => ({ item, i, t: Date.parse(item.at) })).sort((a, b) => b.t - a.t || b.i - a.i);
+  const top = sorted.slice(0, limit);
+  // 受入・到着・搬送のいちばん新しい知らせは、件数の外に押し出されても残す（T184。「無事です」を何度も送ると
+  // 「避難所で受け付けました」が消え、どこにいるかが分からなくなった）。残すときは古い方の 1 件と入れ替え、新しい順は保つ
+  const place = sorted.find((x) => KEEP_KINDS.has(kindOf.get(x.item.id) ?? ""));
+  if (place && limit > 0 && !top.includes(place)) top.splice(top.length - 1, 1, place);
+  return top.map((x) => x.item);
 }
+
+/** 家族の経過で件数を超えても残す種類（居場所の知らせ。T184） */
+const KEEP_KINDS: ReadonlySet<string> = new Set(["received", "arrived_shelter", "transported"]);
 
 /** 家族の災害モードの画面に渡す物（サーバーで組んでブラウザへ。描くだけ） */
 export type FamilyScreen = {
