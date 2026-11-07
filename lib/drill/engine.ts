@@ -75,7 +75,7 @@ import {
 } from "./clock.ts";
 import { fireScheduled } from "./schedule.ts";
 import { lostFollowUps } from "./lost.ts";
-import { screenIncidents, tableAheadOf } from "./state-rules.ts";
+import { changesWhere, SAME_CUT_HOLD_MINUTES, screenIncidents, tableAheadOf } from "./state-rules.ts";
 import { fitKindOf, profileOf, type FitProfile } from "./fit.ts";
 import { gateTurns, tallyGate } from "./gate.ts";
 import { routeTurns } from "./comms.ts";
@@ -1085,9 +1085,22 @@ export async function advance(
 
   // 監督の差し込み（並べて呼んだ物）を区切りの終わりに当てる。指す人は次の区切りで本人役を呼ぶ（T121）
   if (directorP) {
-    const late = screenIncidents(world, await directorP, { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
+    const lateRaw = await directorP;
+    // 同じ時刻に本人の連絡がある人の、いる所を変える出来事は次の区切りへ（T178。本人役は知らないまま「家にいます」と話している）。決まりは今の世界で見る
+    const heldRaw = lateRaw.filter((e) => e.person && changesWhere(e.change) && turns.some((t) => t.person === e.person && Math.round(t.at * 60) >= to));
+    const held = screenIncidents(world, heldRaw, { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
+    const late = screenIncidents(world, lateRaw.filter((e) => !heldRaw.includes(e)), { origin: "ai", minute: to, ahead, fit: fitOf(state, world) });
     world = late.world;
-    book = tallyGate(book, "director", late.ruled.map((r) => r.rule));
+    book = tallyGate(book, "director", [...late.ruled, ...held.ruled].map((r) => r.rule));
+    if (held.kept.length > 0) {
+      book = {
+        ...book,
+        scheduled: [
+          ...(book.scheduled ?? []),
+          ...held.kept.map((e) => ({ at: to + SAME_CUT_HOLD_MINUTES, change: e.change, text: e.text, by: "director" as const, ai: e.ai, ...(e.person ? { person: e.person } : {}), ...(e.inject ? { inject: e.inject } : {}) })),
+        ],
+      };
+    }
     incidents = [...incidents, ...late.kept];
     if (hooks.persona && !capped) {
       for (const e of late.kept) for (const p of incidentPersons(e)) if (members.has(p) && !world.ended?.[p]) touched[p] = Math.min(touched[p] ?? to, to);

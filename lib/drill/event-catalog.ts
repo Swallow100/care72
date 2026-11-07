@@ -522,8 +522,9 @@ const ROWS: ReadonlyArray<EventRow> = [
     kind: "family_stranded",
     label: "帰宅困難",
     scope: "person",
-    words: "同居でない家族が帰宅困難で来られない（同居でない家族の連絡先がある人）",
-    eligible: (s, p, w) => s.contacts.some((c) => c.kind === "family" && c.reach !== null && c.reach !== "together") && !marked(w, p, "familyAway"),
+    words: "同居でない家族が帰宅困難で来られない（同居の家族がおらず、同居でない家族の連絡先がある人）",
+    // 同居の家族のいる人には出さない（T178。評価の 11 回目で、娘と同居の人に「家族 帰宅困難」が出て、娘と一緒の連絡と食い違って読めた。出来事の字は誰かを言わない）
+    eligible: (s, p, w) => s.contacts.some((c) => c.kind === "family" && c.reach !== null && c.reach !== "together") && !s.contacts.some((c) => c.kind === "family" && c.reach === "together") && !marked(w, p, "familyAway"),
     build: (t) => one({ kind: "mark", mark: "familyAway" }, "家族 帰宅困難", t.person),
     text: () => "家族 帰宅困難",
     basis: NONE,

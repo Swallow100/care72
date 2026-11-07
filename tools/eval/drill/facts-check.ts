@@ -9,6 +9,8 @@
 // 赤（動けない）→ 緑は checks.ts の hurt_to_safe（前からの検査）が数える
 
 import { castTurn, turnKey } from "../../../lib/drill/cast.ts";
+import { radioDownAt, type Home } from "../../../lib/drill/comms.ts";
+import { fitKindOf, profileOf } from "../../../lib/drill/fit.ts";
 import { EVENT_CATALOG, isInjectKind } from "../../../lib/drill/event-catalog.ts";
 import type { DrillScenario, WhereNow } from "../../../lib/db/types.ts";
 import { eventHour, scenarioOf } from "../../../lib/drill/scenarios.ts";
@@ -41,7 +43,8 @@ import {
 } from "../../../lib/drill/person-facts.ts";
 import type { ActionRecord } from "../../../lib/drill/action-types.ts";
 import type { PersonState, TurnMove } from "../../../lib/drill/persona-types.ts";
-import type { WorldState } from "../../../lib/drill/scenarios.ts";
+import type { WorldChange, WorldState } from "../../../lib/drill/scenarios.ts";
+import { changesWhere } from "../../../lib/drill/state-rules.ts";
 import { REASON_MEDICAL_WORDS } from "../../../lib/drill/world-apply.ts";
 import { clockStartOf, startHourOf } from "../../../lib/drill/night.ts";
 import { LOST_MAX_MINUTES } from "../../../lib/drill/lost.ts";
@@ -60,6 +63,10 @@ export type FactPerson = {
   canPress?: boolean;
   /** 本人が電話に出られるか（T174、selfCanAnswer。無ければ出られると見る） */
   selfPhone?: boolean;
+  /** 家の外の押せる人（離れた家族・支援者）がいるか（T178。家の電波が不通でも届く。無ければいると見る） */
+  farPress?: boolean;
+  /** 家の通信（T178。家の電波の不通を見る） */
+  home?: Home;
 };
 
 const RETURNED = /帰宅|(?:家|自宅|うち)に戻|帰って(?:き|来)|戻ってき/;
@@ -307,6 +314,10 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
   {
     const o = world.outage;
     const end = Math.max(...r.ticks.map((x) => Math.round(x.hour * 60)), 0);
+    const profile = profileOf(fitKindOf({ scenario: outcome.plan.scenario as DrillScenario, options: outcome.plan.scale ? { scale: outcome.plan.scale as never } : null }, world));
+    // 全域の電波の不通（監督の差し込み。終わりの世界には残らないので出来事から）
+    const radioMoves = r.ticks.flatMap((t) => t.incidents.flatMap((e) => (e.change?.kind === "radio" ? [{ minute: Math.round((e.at ?? t.hour) * 60), down: (e.change as { state?: string }).state === "down" }] : []))).sort((a, b) => a.minute - b.minute);
+    const radioAllDownAt = (minute: number): boolean => radioMoves.filter((m) => m.minute <= minute).at(-1)?.down === true;
     for (const [person, p] of Object.entries(people)) {
       if (!o || !inOutage(world, p) || !(outcome.plan.participants ?? [person]).includes(person) || p.canPress === false) continue;
       const turns = byPerson.get(person) ?? [];
@@ -315,7 +326,9 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
       for (const d of p.plan.devices) {
         const s = p.plan.spares.find((x) => x.category === d.category);
         if (d.hours === null || (s ? s.hours == null : p.plan.power)) continue;
-        const cutAt = Math.round((o.since + d.hours + (s?.hours ?? 0)) * 60);
+        // 町ごとの停電の始まり（仮想。T178。全域の始まりで数えると切れた時刻が早く出る）
+        const since = o.area.scope === "towns" && p.town ? (o.area.since?.[p.town] ?? o.since) : o.since;
+        const cutAt = Math.round((since + d.hours + (s?.hours ?? 0)) * 60);
         const until = cutAt + DOWN_SILENT_MINUTES;
         const back = [o.restoredAt != null ? Math.round(o.restoredAt * 60) : null, world.supplies?.[person]?.power ?? null].filter((x): x is number => typeof x === "number");
         const backAt = back.length > 0 ? Math.min(...back) : Infinity;
@@ -324,10 +337,55 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
           if (u.ai && u.color === "green" && m >= cutAt && m < backAt && !awayBy(m)) hit("down_green", person, m, `${d.category} 止まったまま緑`);
         }
         const endedAt = world.ended?.[person] ? end : null;
+        // 止まったままの長い間（T178。評価の 11 回目で、最初の 240 分のあとに 15〜30 時間の無連絡があり、物差しの外だった）。止まった時刻から戻る・移る・終わるまでの間で、
+        // 連絡（安否・電話に出た・訪問・人の到着）の無い間が DOWN_GAP_MINUTES を超えた数。押せる人が誰も届かない間（離れた家族がいない・全域の不通）は down_isolated で別に数え、守りに入れない
+        if (endedAt === null) {
+          const leftAt = Math.min(...carried, ...turns.filter((u) => ["shelter", "other"].includes(placeOfState(stateOf(u)) ?? "")).map((u) => Math.round(u.at * 60)), Infinity);
+          const stopAt = Math.min(backAt, leftAt, end);
+          const near = [
+            ...turns.map((u) => Math.round(u.at * 60)),
+            ...(world.arrivals ?? []).filter((a) => a.person === person && a.arrived).map((a) => a.arrive),
+            ...(world.dispatched ?? []).filter((a) => a.person === person && a.arrived).map((a) => a.arrive),
+            ...(r.actions as LooseAction[]).filter((a) => a.person === person && typeof a.result?.atMinute === "number" && (a.result.speech || a.result.visit)).map((a) => a.result!.atMinute as number),
+          ]
+            .filter((m) => m > cutAt && m < stopAt)
+            .sort((a, b) => a - b);
+          let from = cutAt;
+          for (const m of [...near, stopAt]) {
+            if (m - from > DOWN_GAP_MINUTES) {
+              checked += 1;
+              const mid = Math.round((from + m) / 2);
+              const open = { ...world, outage: { ...o, restoredAt: null } };
+              const cutOff = radioAllDownAt(mid) || (p.farPress === false && p.home !== undefined && radioDownAt(open, profile, p.home, mid));
+              hit(cutOff ? "down_isolated" : "down_gap", person, from, `${d.category} ${m - from} 分 連絡なし`);
+            }
+            from = m;
+          }
+          // 止まった間の連絡が前と同じ言い方（T178。数えるだけ。1 回目は基準づくり）
+          const said = turns.filter((u) => u.saying && Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) < stopAt);
+          for (let i = 1; i < said.length; i++) if (sameWording(said[i - 1].saying!, said[i].saying!)) hit("down_repeat", person, Math.round(said[i].at * 60), `${d.category} 前と同じ言い方`);
+        }
         if (until > end || endedAt !== null || back.some((x) => x <= until) || awayBy(until)) continue;
         checked += 1;
         if (!turns.some((u) => Math.round(u.at * 60) > cutAt && Math.round(u.at * 60) <= until)) hit("down_silent", person, cutAt, `${d.category} 予備が切れた時刻から ${DOWN_SILENT_MINUTES} 分`);
       }
+    }
+  }
+
+  // 同じ刻みの出来事と連絡（T178）。いる所を変える出来事と同じ時刻かそのあとに「家」の連絡がある形（監督を次の区切りへ回すので 0 のはず）と、
+  // 同居の家族のいる人の家族の帰宅困難（出来事の字は誰かを言わず、一緒にいる連絡と食い違って読める）
+  for (const t of r.ticks) {
+    for (const e of t.incidents) {
+      const c = e.change as WorldChange | undefined;
+      if (!e.person || !c) continue;
+      const minute = Math.round((e.at ?? t.hour) * 60);
+      if (changesWhere(c)) {
+        checked += 1;
+        for (const u of t.turns) {
+          if (u.person === e.person && Math.round((u.at ?? t.hour) * 60) >= minute && placeOfState(stateOf({ ...u, at: u.at ?? t.hour })) === "home") hit("same_cut_place", e.person, minute, `${c.kind} → ${u.source ?? ""} 家`);
+        }
+      }
+      if (c.kind === "mark" && c.mark === "familyAway" && (people[e.person]?.together.length ?? 0) > 0) hit("family_away_together", e.person, minute, "同居の家族のいる人の帰宅困難");
     }
   }
 
@@ -406,10 +464,12 @@ export function factHits(outcome: RunOutcome, people: Readonly<Record<string, Fa
 }
 
 /** 帳面の門の決まりのほかに、台が数える型（T141。clock_drift は T158） */
-export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer" | "move_unrecorded";
+export type FactExtraRule = "lost_unresolved" | "area_repeat" | "clock_drift" | "down_silent" | "down_green" | "self_answer" | "move_unrecorded" | "same_cut_place" | "family_away_together" | "down_gap" | "down_isolated" | "down_repeat";
 
 /** 機器の予備が切れてから連絡が無いと見る間（分。T167） */
 export const DOWN_SILENT_MINUTES = 240;
+/** 機器が止まったままの間の連絡の間の上限（分。T178）。呼ぶ間（DOWN_FOLLOW_MINUTES の 480 分）と、次の区切りまで（長くて 180 分）を足して少し余らせた */
+export const DOWN_GAP_MINUTES = 720;
 
 /** 電池の残りの数の流れの食い違いと見る差（分）の下限（T158） */
 export const CLOCK_DRIFT_MIN = 30;

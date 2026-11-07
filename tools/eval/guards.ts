@@ -257,6 +257,11 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-place-flip", bench: "drill", item: "count:drill:facts:place_flip", op: "<=", value: 0, since: "r11", task: "T177", label: "手も記録も無いのにいる所が変わらない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   { id: "drill-move-said", bench: "drill", item: "count:drill:facts:move_said", op: "<=", value: 0, since: "r11", task: "T177", label: "記録に無い移動の言葉を出さない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   { id: "drill-move-unrecorded", bench: "drill", item: "count:drill:facts:move_unrecorded", op: "<=", value: 0, since: "r11", task: "T177", label: "移ると言った人に移った記録が付く", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
+  // T178: 評価の 11 回目で、同じ時刻に行方不明の出来事と「家にいます」の連絡が並び、同居の家族のいる人に「家族 帰宅困難」が出て、どちらも講評に残った。監督の出来事を次の区切りへ回し、帰宅困難は同居のいない人だけに
+  { id: "drill-same-cut-place", bench: "drill", item: "count:drill:facts:same_cut_place", op: "<=", value: 0, since: "r12", task: "T178", label: "いる所を変える出来事と同じ時刻に家と言う連絡を並べない", suspects: ["lib/drill/engine.ts", "lib/drill/state-rules.ts", "lib/drill/schedule.ts"] },
+  { id: "drill-family-away-together", bench: "drill", item: "count:drill:facts:family_away_together", op: "<=", value: 0, since: "r12", task: "T178", label: "同居の家族のいる人に家族の帰宅困難を出さない", suspects: ["lib/drill/event-catalog.ts", "lib/drill/quiet-event.ts"] },
+  // T178: 評価の 11 回目で、止まったまま 15〜30 時間の無連絡が物差しの外にあった（r11 の記録に当てて 4 件）。呼ぶ間を伸ばし、本人のボタンが届かない間は離れた家族が伝える
+  { id: "drill-down-gap", bench: "drill", item: "count:drill:facts:down_gap", op: "<=", value: 1, since: "r12", task: "T178", label: "機器が止まったままの間に 12 時間を超えて連絡を途切れさせない（1 件まで）", suspects: ["lib/drill/hooks.ts", "lib/drill/person-facts.ts", "lib/drill/persona.ts"] },
   // T177: r10 は 1 回 77、上限比の最大 62.7%（94 回）で T174 の見込み 57% を超えた。巡回だけの人の呼び出しを相乗りに、いる所の問いをコードの答えにした。r10 の数を超えない形で守る
   { id: "drill-calls-r10", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 77, since: "r11", task: "T177", label: "AI の呼び出しを 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
   { id: "drill-cap-r10", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.627, since: "r11", task: "T177", label: "1 訓練の上限との比を 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },

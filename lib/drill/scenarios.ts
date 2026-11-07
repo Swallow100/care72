@@ -261,6 +261,10 @@ export type Scheduled = {
   person?: string;
   basis?: SourceId;
   by: "director" | "world" | "action";
+  /** AI が書いた文か（区切りの終わりから次へ回した監督の出来事。T178）。無ければ AI の印なし */
+  ai?: boolean;
+  /** 差し込みの種類（同じ出来事。T178） */
+  inject?: WorldEvent["inject"];
 };
 
 /** この訓練の AI の呼び出しの数（監督・本人役・通話の相手・自由に書く手） */
