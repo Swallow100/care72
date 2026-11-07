@@ -7,7 +7,13 @@ import { REQUEST_LABELS } from "./custody/labels.ts";
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
 
-describe("T184 の 3: 本人のページから医療班へ", () => {
+describe("T184 の 9: 役選択の画面", () => {
+  it("画面に無い「右上の役変更」を指さない", () => {
+    expect(read("../app/login/role/page.tsx")).not.toMatch(/右上|再選択/);
+  });
+});
+
+describe("T184 の 3:本人のページから医療班へ", () => {
   it("見える字はヘッダーの入口と同じ「医療班」と役のアイコン（押すと役が替わる）", () => {
     expect(REQUEST_LABELS.toStaff).toBe(ROLE_LABELS.medical);
     const section = read("../components/person/RequestSection.tsx");
