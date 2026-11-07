@@ -41,11 +41,12 @@ describe("移ったあとのいる所（門）", () => {
     expect(sentenceSlip("本人は病院へ移りました。", { ...ctxBase, place: "other" })).toBeNull();
   });
 
-  it("家の外から家へは、来た人や届いた物では戻らない（戻った言葉のときだけ）。ふだん動ける人が家から出るのは今までどおり手があれば", () => {
+  it("家の外から家へは、来た人や届いた物では戻らない（戻った言葉のときだけ）。家から出るのは運べる人・乗り物が来た時だけ（T177）", () => {
     const f = { help: { at: 100, what: "機器の業者" }, mover: null, plan: null };
     expect(helpedFlip(f, "other")).toBe(false);
     expect(helpedFlip(f, "shelter")).toBe(false);
-    expect(helpedFlip(f, "home")).toBe(true);
+    expect(helpedFlip(f, "home")).toBe(false);
+    expect(helpedFlip({ ...f, mover: { at: 100, what: "移送の車" } }, "home")).toBe(true);
     const facts = factsOf({ person: "p-04", world: { ...EMPTY_WORLD, arrivals: [{ person: "p-04", role: "vendor", arrive: 100, back: 100, arrived: true, from: "director" }] }, state: state({ color: "red", whereNow: null, atHome: false, at: 1 }), actions: [], now: 120, plan: null, inOutage: false });
     const turn = { person: "p-04", color: "green" as const, source: "family" as const, whereNow: "home" as const, injured: null, atHome: null, canMove: null, hasMedicine: null, saying: "業者が来ました。", doing: null, ai: true, at: 2 };
     expect(screenTurn(turn, facts)?.whereNow).toBe("other");

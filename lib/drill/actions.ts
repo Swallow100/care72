@@ -35,7 +35,7 @@ import {
   DrillEnded,
   fitOf,
   isClock,
-  isNight,
+  timeOf,
   step,
   type ActionBefore,
   type ActionRecord,
@@ -187,6 +187,8 @@ export type CallAsk = {
   tell?: HeardSignal;
   /** 夜間発災（T59）。本人役に時刻の 1 行を足す */
   night?: boolean;
+  /** 夜間発災でない訓練の発災の時刻（時。T177。帳面の時刻を時計の言い方で渡す） */
+  startHour?: number;
 };
 
 /**
@@ -648,7 +650,7 @@ export async function act(
             state: own,
             tell,
             fit: fitKindOf(s, s.world),
-            ...(s.options?.night === true ? { night: true } : {}),
+            ...timeOf(s),
           })
           .catch(() => null)
       : null;
@@ -679,7 +681,7 @@ export async function act(
   }
   // T93: 着いたら本人役が見て分かる様子と頼み事（Haiku × 1 回）。聞いた安否・色は変えない。頼み事は applyResult が積む
   const seen = heard?.via === "visit" && hooks.visit ? input.person : null;
-  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, fit: fitKindOf(s, s.world), ...(isNight(s) ? { night: true } : {}) }).catch(() => null) : null;
+  const seenReply = seen ? await hooks.visit!({ person: seen, hour: endMinute / 60, world: s.world, incidents, state: s.people[seen] ?? null, fit: fitKindOf(s, s.world), ...timeOf(s) }).catch(() => null) : null;
   const visitRaw = seenReply?.report ?? null;
   // T118: 通話の最初の言葉と訪問の本人役も 1 訓練の数え（T90 の 150）に入れる（往復は talk.ts、自由文は countFree）
   if (callReply?.called || seenReply?.called) s = { ...s, world: countPersonaCalls(s.world, callReply?.called ? 1 : 0, seenReply?.called ? 1 : 0) };

@@ -48,3 +48,26 @@ export function timeLines(hour: number, x: { night?: boolean; startHour?: number
   if (x.night) return [nightLine(hour)];
   return typeof x.startHour === "number" ? [dayLine(hour, x.startHour)] : [];
 }
+
+/** 発災の時刻（時）。夜間発災は NIGHT_START_HOUR、ほかは発災の時刻。分からなければ null（T177。帳面・門・台が同じに引く） */
+export function clockStartOf(x: { night?: boolean | undefined; startHour?: number | null | undefined }): number | null {
+  if (x.night) return NIGHT_START_HOUR;
+  return typeof x.startHour === "number" ? x.startHour : null;
+}
+
+/** 発災から minute 分の時計（何日目の何時何分） */
+export function clockOfMinute(minute: number, startHour: number): { day: number; hour: number; min: number } {
+  const total = startHour * 60 + Math.max(0, Math.round(minute));
+  return { day: Math.floor(total / 1440) + 1, hour: Math.floor(total / 60) % 24, min: total % 60 };
+}
+
+/**
+ * 発災から minute 分の時計の言い方（T177）。「16 時ごろ」「16 時 50 分ごろ」。今と違う日は「2 日目の 3 時ごろ」。分は 10 分に丸めて切り捨てる
+ * （dayLine の「今は N 時ごろ」と同じ向き）。評価の 10 回目で、帳面の経過の数（予備も 7 時間に切れた）を本人役が時計の 7 時と言った
+ */
+export function clockWhen(minute: number, startHour: number, now: number): string {
+  const c = clockOfMinute(minute, startHour);
+  const m = Math.floor(c.min / 10) * 10;
+  const day = c.day !== clockOfMinute(now, startHour).day ? `${c.day} 日目の ` : "";
+  return `${day}${c.hour} 時${m > 0 ? ` ${m} 分` : ""}ごろ`;
+}

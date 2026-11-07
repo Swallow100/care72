@@ -82,7 +82,9 @@ describe("いる所: ふだん動けない人・浸水・訪問", () => {
   });
 
   it("川の氾濫の間、浸水の区域の家は計画の手段があっても移れない（同居の車があっても）", () => {
-    const plan = planOf(base);
+    // 寝たきりの人は同居の車だけでは移らない（T177）ので、歩行困難で寝たきりでない人で見る
+    const notBed = { ...base, ledger: { ...base.ledger, care: { ...base.ledger.care, bedridden: false } } };
+    const plan = planOf(notBed);
     expect(plan.carer).toBe(true);
     expect(plan.floodM).toBe(3);
     const dry = factsOf({ person: "p-02", world: EMPTY_WORLD, state: said("計画どおり病院へ移ります。"), actions: [], now: 120 + GO_MINUTES, plan, inOutage: false });
@@ -91,7 +93,7 @@ describe("いる所: ふだん動けない人・浸水・訪問", () => {
     expect(wet.place).toMatchObject({ where: "home", by: "turn" });
     expect(wet.going).toMatchObject({ can: false, why: "blocked" });
     // 浸水の区域の外（浅い想定）の家は止めない
-    const shallow = planOf({ ...base, ledger: { ...base.ledger, evacuation: { ...base.ledger.evacuation, hazards: [{ kind: "flood", depthM: 0.5 }] } } });
+    const shallow = planOf({ ...notBed, ledger: { ...notBed.ledger, evacuation: { ...notBed.ledger.evacuation, hazards: [{ kind: "flood", depthM: 0.5 }] } } });
     expect(factsOf({ person: "p-02", world: { ...EMPTY_WORLD, flood: true }, state: said("計画どおり病院へ移ります。"), actions: [], now: 600, plan: shallow, inOutage: false }).place?.by).toBe("plan");
   });
 

@@ -15,7 +15,7 @@ import { drillScope } from "./db.ts";
 import { stopLog, type ClockHooks, type DrillState } from "./engine.ts";
 import { castFactsMap } from "./cast-facts.ts";
 import { capReached, clockMarksOf, type ClockMark } from "./clock.ts";
-import { quickKindOf, quickReply } from "./talk-quick.ts";
+import { isPlaceAsk, quickKindOf, quickReply } from "./talk-quick.ts";
 import { drillClocks } from "./world-clocks.ts";
 import { clockRuns } from "./score.ts";
 import { createDirectorHook } from "./director.ts";
@@ -37,7 +37,7 @@ import {
 } from "./persona.ts";
 import { TALK_ASK_WORDS, type TalkHook, type TalkReply, type VisitHook } from "./dialogue.ts";
 import { createWorldHook, roomClientOf, worldModeOf, type RoomClient } from "./world-room.ts";
-import { DOWN_FOLLOW_MINUTES, downCuts, gateLog, placeOfState, planOf, spareCuts } from "./person-facts.ts";
+import { DOWN_FOLLOW_MINUTES, downCuts, gateLog, placeOfState, placeReplyOf, planOf, spareCuts } from "./person-facts.ts";
 
 /** DRILL_WORLD: 仮想モードの世界の道（session 既定 = Managed Agents の部屋・messages = 1 回呼び・off = 世界を動かさない） */
 export type DrillHookEnv = AiEnv & { DB: D1Database; DRILL_WORLD?: string };
@@ -219,6 +219,7 @@ export function createCallHook(deps: { load: () => Promise<ReadonlyMap<string, P
           callee,
           ...(ask.tell ? { tell: ask.tell } : {}),
           ...(ask.night ? { night: true } : {}),
+          ...(typeof ask.startHour === "number" ? { startHour: ask.startHour } : {}),
           ...(standIn ? { standIn: true } : {}),
         },
         ask.pickup,
@@ -248,7 +249,7 @@ export function createVisitHook(deps: { load: () => Promise<ReadonlyMap<string, 
       const persona = buildPersona(source, { ...(deps.on ? { on: deps.on } : {}), places: personaPlaces(deps.ai, sources), fit: v.fit });
       const report = await personaVisitReport(
         persona,
-        { person: v.person, hour: v.hour, world: v.world, incidents: v.incidents, state: v.state, ...(v.night ? { night: true } : {}) },
+        { person: v.person, hour: v.hour, world: v.world, incidents: v.incidents, state: v.state, ...(v.night ? { night: true } : {}), ...(typeof v.startHour === "number" ? { startHour: v.startHour } : {}) },
         tally.ai,
       );
       return { report, called: tally.called() };
@@ -293,6 +294,11 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     // T167: 相づち・待って・聞こえますか・同じ問いなどは Haiku を呼ばずコードの短い返事（lib/drill/talk-quick.ts）。中身のある文は本人役のまま
     const quick = quickKindOf({ ...(t.ask ? { ask: t.ask } : {}), said }, t.lines);
     if (quick) return { said, speech: quickReply(quick, t.lines, t.minute), asks: [], ai: false, called: false, coded: true };
+    // T177: いる所を聞く言葉はコードの記録で答える（Haiku を呼ばない）。もう同じ通話で答えていれば短い返事
+    if (isPlaceAsk({ ...(t.ask ? { ask: t.ask } : {}), said })) {
+      const words = placeReplyOf(personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }));
+      if (words) return { said, speech: t.lines.some((l) => l.who === "them" && l.text === words) ? quickReply("repeat", t.lines, t.minute) : words, asks: [], ai: false, called: false, coded: true };
+    }
     let text: ForClaude<{ text: string }>;
     try {
       text = pseudonymizeText(
@@ -306,6 +312,7 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
             callee,
             ...(t.tell ? { tell: t.tell } : {}),
             ...(t.night ? { night: true } : {}),
+            ...(typeof t.startHour === "number" ? { startHour: t.startHour } : {}),
             first: t.first,
             lines: t.lines,
             said,
@@ -324,7 +331,7 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす
     // T158: この電話の前の返事とほぼ同じ文と、もう頼んだ頼み事を落とす（Claude をもう一度呼ばない）
     const prior = { said: talkPrior(t.lines), asked: talkAsked(t.lines) };
-    const r = await personaTalkReply(persona, text, key, deps.ai, personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }), prior);
+    const r = await personaTalkReply(persona, text, key, deps.ai, personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute, night: t.night, startHour: t.startHour }), prior);
     return { said, speech: r.speech, asks: r.asks, ai: r.ai, called: true };
   };
 }
