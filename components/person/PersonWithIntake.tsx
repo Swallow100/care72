@@ -55,7 +55,21 @@ async function requestOf(personId: string, destination: string | undefined, disa
   }
 }
 
-export async function PersonWithIntake({ view, level, intake, staffEntry = false }: { view: View; level: Level; intake: IntakeProps | null; /** 役を選べる人（依頼中の面に受入一覧への入口。T166） */ staffEntry?: boolean }) {
+export async function PersonWithIntake({
+  view,
+  level,
+  intake,
+  staffEntry = false,
+  staffRole,
+}: {
+  view: View;
+  level: Level;
+  intake: IntakeProps | null;
+  /** 役を選べる人（依頼中の面に受入一覧への入口。T166） */
+  staffEntry?: boolean;
+  /** その入口の役の値（lib/auth/roles.ts の medicalChoiceOf。新規事業所の中では新規事業所の医療班、T180） */
+  staffRole?: string;
+}) {
   if (!intake) return <PersonView view={view} level={level} />;
   // スマホの面（T149）はケアマネの役だけ（入れる欄を持つ人と同じ）。同意の面のすぐ後
   // 受入依頼の面（T163）も同じ理由でここで読み、頭のすぐ下に差し込む
@@ -74,7 +88,7 @@ export async function PersonWithIntake({ view, level, intake, staffEntry = false
             level={level}
             edit={place ? { ...intake.edit, place } : intake.edit}
             phone={phone ? <PhoneSection summary={phone} level={level} /> : null}
-            request={request ? <RequestSection personId={intake.personId} panel={request} level={level} staffEntry={staffEntry} /> : null}
+            request={request ? <RequestSection personId={intake.personId} panel={request} level={level} staffEntry={staffEntry} staffRole={staffRole} /> : null}
           />
         </div>
         {/* 内側で送らない（送るのは画面全体の縦 1 本）。右の列はページの流れに置く */}

@@ -29,7 +29,7 @@ import { listDrills } from "../drill/db.ts";
 import { defaultPlanForm } from "../forms/plan-form.ts";
 import { DAILY_RESET_CRON, scheduledReset } from "../seed/cron.ts";
 import type { SeedBucket } from "../seed/reset.ts";
-import { clearSandboxes, SANDBOX_CLEAR, sandboxClearStatements, sandboxR2Prefixes } from "../seed/sandbox.ts";
+import { clearSandboxes, SANDBOX_ADOPT_UNAFFILIATED, SANDBOX_CLEAR, sandboxClearStatements, sandboxR2Prefixes } from "../seed/sandbox.ts";
 import { createSurveyShare, loadSurveyOverview } from "../survey/store.ts";
 import { newOfficeRows } from "./create.ts";
 import { assignPerson, createPerson, listOfficePeople, setUnlisted } from "./people.ts";
@@ -244,7 +244,8 @@ describe("作る", () => {
     expect((await roleChoicesFor(db, yamamoto)).map((c) => c.role)).not.toContain(SANDBOX_CHOICE);
     const { principal } = await judgeSandbox();
     expect(currentChoice(principal)).toBe(SANDBOX_CHOICE);
-    expect((await roleChoicesFor(db, principal)).at(-1)?.sub).toBe(SANDBOX_LABELS.officeName);
+    // 試用事業所の中の役（T180）がその下に続くので、項目は値で引く
+    expect((await roleChoicesFor(db, principal)).find((c) => c.role === SANDBOX_CHOICE)?.sub).toBe(SANDBOX_LABELS.officeName);
     expect(currentChoice(yamamoto)).toBe("care_manager");
   });
 
@@ -369,11 +370,13 @@ describe("事業所の壁: 試用事業所から本物の事業所・デモ事�
     expect(actorOf(demo!.principal).placeEdit).toBe(false);
   });
 
-  it("所属なしの引受: 本物の医療班が登録した人は出さず、引き受けられない（デモの登録だけ）", async () => {
+  it("所属なしの引受: 本物の医療班・デモの審査員が登録した人は出さず、引き受けられない（試用事業所の登録だけ。T180）", async () => {
     const { principal: p } = await judgeSandbox();
     const list = await listUnaffiliated(db, actorOf(p), TODAY);
-    expect(list.map((x) => x.id)).toEqual([DEMO_SITE_PERSON]);
+    // T180 から、試用事業所は試用事業所のアカウント（新規事業所の医療班の役）の登録だけ（前はデモの登録。lib/office/t180.test.ts）
+    expect(list.map((x) => x.id)).toEqual([]);
     expect((await takeOver(db, actorOf(p), REAL_SITE_PERSON, AT)).ok).toBe(false);
+    expect((await takeOver(db, actorOf(p), DEMO_SITE_PERSON, AT)).ok).toBe(false);
     expect(one<{ office_id: string }>("SELECT office_id FROM people WHERE id = ?", REAL_SITE_PERSON).office_id).toBe(UNAFFILIATED_OFFICE_ID);
   });
 
@@ -498,7 +501,10 @@ describe("毎朝 4 時の掃除", () => {
       const cols = (sqlite.prepare(`SELECT name FROM pragma_table_info('${t}')`).all() as Array<{ name: string }>).map((c) => c.name);
       if (cols.some((c) => c === "office_id" || c === "person_id" || c === "drill_id")) expect(SANDBOX_CLEAR[t], t).not.toBeNull();
     }
-    for (const s of sandboxClearStatements()) expect(s).toMatch(/^DELETE FROM \w+ WHERE /);
+    // 先頭だけ、所属なしの登録を試用事業所へ移す UPDATE（T180、SANDBOX_ADOPT_UNAFFILIATED）。ほかは DELETE
+    const [first, ...rest] = sandboxClearStatements();
+    expect(first).toBe(SANDBOX_ADOPT_UNAFFILIATED);
+    for (const s of rest) expect(s).toMatch(/^DELETE FROM \w+ WHERE /);
   });
 
   it("試用事業所を全部消し、ほかの行は 1 行も変えない。外部キーも壊れない。R2 は 3 つの頭だけ消す", async () => {
