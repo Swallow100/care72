@@ -21,6 +21,9 @@
 // 見込みは連続の時計の式（lib/drill/estimate.ts の estimateClockCalls）
 // T104: 設定に「仮想規模」（既定おまかせ。仮想だけに効く。lib/drill/scale.ts）と「自宅」（既定 事業所付近。大雨想定・地震想定の監督が
 // 訓練する人の身の回りの出来事に使う。lib/drill/self.ts）。どちらも既定のままなら送る物は前と同じ
+// T186: 参加者は 20 人まで（lib/drill/options.ts の PARTICIPANTS_LIMIT）。担当一覧が越えるときは設定を開いた形で出し、
+// 名前・町・台帳の要点の一覧から選ぶ（既定は上から 20 人、「選択 18 / 20」、20 人に達したら選んでいない人は押せない、
+// 既定・解除）。選んだ人をいつも送る。20 人以下の担当一覧は今のまま
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -36,7 +39,7 @@ import { aiRemaining, aiUsable, type AiStatus } from "@/lib/claude/status";
 import { estimateClockCalls, overLimit } from "@/lib/drill/estimate";
 import { AI_STOP_UI, DRILL_LABELS, SCENARIO_LABELS, T59_LABELS, T70_LABELS } from "@/lib/drill/labels";
 import { isVirtual } from "@/lib/drill/scenarios";
-import { STAFF_MAX, T104_LABELS } from "@/lib/drill/options";
+import { defaultParticipants, overParticipants, PARTICIPANTS_LIMIT, STAFF_MAX, T104_LABELS, T186_LABELS } from "@/lib/drill/options";
 import { SCALE_CHOICES, scaleKey, scaleLabel, scaleOfKey, type DrillScale } from "@/lib/drill/scale";
 
 /**
@@ -51,7 +54,19 @@ export function startBody(scenario: DrillScenario, chosen?: Record<string, unkno
  * 担当一覧の人（参加者の選択）。canPress が false の人に「押せる人なし」（無ければ印なし）、callable は本人役を呼びうる想定
  * （見込みに使う。無ければ全部の想定で数える）
  */
-export type StartPerson = { id: string; name: string; canPress?: boolean; callable?: ReadonlyArray<DrillScenario> };
+export type StartPerson = {
+  id: string;
+  name: string;
+  canPress?: boolean;
+  callable?: ReadonlyArray<DrillScenario>;
+  /** 台帳の町名（T186。上限を越える担当一覧の選択に出す） */
+  town?: string | null;
+  /** 台帳の要点（T186。医療依存の印・機器・独居） */
+  facts?: ReadonlyArray<string>;
+};
+
+/** 上限を越える担当一覧の行に添える町と要点（「みずほし町・酸素・独居」） */
+const personNote = (p: StartPerson): string => [p.town ?? null, ...(p.facts ?? [])].filter(Boolean).join("・");
 
 const SELECT =
   "h-8 min-w-0 rounded bg-panel px-2 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-accent";
@@ -82,8 +97,10 @@ export function StartButtons({
   const router = useRouter();
   const [busy, setBusy] = useState<DrillScenario | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(people.map((p) => p.id)));
+  // T186: 担当一覧が上限（20 人）を越えるときは、設定を開いた形で始め、既定は担当一覧の順の上から 20 人
+  const over = overParticipants(people.length);
+  const [open, setOpen] = useState(over);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(defaultParticipants(people).map((p) => p.id)));
   const [staff, setStaff] = useState("");
   const [night, setNight] = useState(false);
   // T104: 仮想の規模（空はおまかせ）と自宅の地区（空は事業所付近）
@@ -91,8 +108,12 @@ export function StartButtons({
   const [home, setHome] = useState("");
   const boxId = useId();
 
-  const all = chosen.size === people.length;
+  // 上限を越える担当一覧では「全員」が無い（選んだ人をいつも送る。サーバーは選ばない開始を断る）
+  const all = !over && chosen.size === people.length;
   const none = people.length > 0 && chosen.size === 0;
+  // 上限に達した（これより足せない）。越えて選んだら開始しない（二重の守り）
+  const full = over && chosen.size >= PARTICIPANTS_LIMIT;
+  const tooMany = chosen.size > PARTICIPANTS_LIMIT;
   const picked = people.filter((p) => chosen.has(p.id));
   // 押せる人なし（選んだ参加者のうち）
   const noPresser = picked.filter((p) => p.canPress === false).length;
@@ -102,6 +123,7 @@ export function StartButtons({
   /** 選んだ物だけ（何も変えなければ undefined。送る物は前と同じ） */
   const options = () => {
     const o: { participants?: string[]; staff?: number; night?: boolean; scale?: DrillScale; home?: string } = {};
+    // 上限を越える担当一覧（T186）は all がいつも false なので、選んだ人をいつも送る
     if (!all) o.participants = people.filter((p) => chosen.has(p.id)).map((p) => p.id);
     if (staff !== "") o.staff = Number(staff);
     if (night) o.night = true;
@@ -115,7 +137,7 @@ export function StartButtons({
     setChosen((now) => {
       const next = new Set(now);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else if (next.size < PARTICIPANTS_LIMIT) next.add(id);
       return next;
     });
 
@@ -173,7 +195,7 @@ export function StartButtons({
           kind={s === main ? "main" : "plain"}
           icon={PlayIcon}
           onClick={() => void start(s)}
-          disabled={disabled || busy !== null || none}
+          disabled={disabled || busy !== null || none || tooMany}
           data-scenario={s}
           data-pending={busy === s ? "" : undefined}
         >
@@ -232,24 +254,91 @@ export function StartButtons({
             <fieldset className="min-w-0" data-start-participants>
               <legend className={`mb-1 flex w-full flex-wrap items-center gap-x-2 ${LABEL}`}>
                 <span>{T59_LABELS.participants}</span>
-                <span className="tabular-nums">
-                  {chosen.size} / {people.length} {T59_LABELS.people}
-                </span>
+                {over ? (
+                  // T186: 上限を越える担当一覧は「選択 18 / 20」（分母は上限）
+                  <span className="tabular-nums" data-start-picked={chosen.size}>
+                    {T186_LABELS.picked} {chosen.size} / {PARTICIPANTS_LIMIT}
+                  </span>
+                ) : (
+                  <span className="tabular-nums">
+                    {chosen.size} / {people.length} {T59_LABELS.people}
+                  </span>
+                )}
                 {noPresser > 0 && (
                   <span className="font-normal tabular-nums">
                     {T70_LABELS.noPresser} {noPresser} {T59_LABELS.people}
                   </span>
                 )}
                 {none && <span className="font-bold text-danger">{T59_LABELS.noParticipants}</span>}
-                <Button
-                  kind="plainIn"
-                  size="sm"
-                  onClick={() => setChosen(all ? new Set() : new Set(people.map((p) => p.id)))}
-                  data-start-all
-                >
-                  {T59_LABELS.all}
-                </Button>
+                {over ? (
+                  <>
+                    <Button
+                      kind="plainIn"
+                      size="sm"
+                      onClick={() => setChosen(new Set(defaultParticipants(people).map((p) => p.id)))}
+                      data-start-reset
+                    >
+                      {T186_LABELS.reset}
+                    </Button>
+                    <Button kind="plainIn" size="sm" onClick={() => setChosen(new Set())} disabled={chosen.size === 0} data-start-clear>
+                      {T186_LABELS.clear}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    kind="plainIn"
+                    size="sm"
+                    onClick={() => setChosen(all ? new Set() : new Set(people.map((p) => p.id)))}
+                    data-start-all
+                  >
+                    {T59_LABELS.all}
+                  </Button>
+                )}
               </legend>
+              {over ? (
+                // T186: 上限を越える担当一覧は名前・町・台帳の要点の一覧。上限に達したら選んでいない人のチェックを押せなくする
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-2 gap-y-0.5" data-start-over>
+                  {people.map((p) => {
+                    const on = chosen.has(p.id);
+                    const locked = full && !on;
+                    const note = personNote(p);
+                    // 押せる人なしの人は名前が本人のページへの道なので、行は label にしない（四角だけで切り替える）
+                    const Row = p.canPress === false ? "div" : "label";
+                    return (
+                      <Row
+                        key={p.id}
+                        className={`${CHECK_ROW} py-0.5 ${locked ? "cursor-not-allowed! text-muted" : p.canPress === false ? "cursor-auto!" : ""}`}
+                        data-no-presser={p.canPress === false ? p.id : undefined}
+                        data-press={p.canPress !== false && !locked ? "" : undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          className={`${CHECK} ${locked ? "cursor-not-allowed" : "cursor-pointer"}`}
+                          checked={on}
+                          disabled={locked}
+                          onChange={() => toggle(p.id)}
+                          aria-label={p.name}
+                          data-start-person={p.id}
+                        />
+                        <span className="flex min-w-0 flex-col leading-tight">
+                          {p.canPress === false ? (
+                            <Link href={`/people/${encodeURIComponent(p.id)}`} className={NAME_LINK} data-press>
+                              {p.name}
+                            </Link>
+                          ) : (
+                            <span className="min-w-0 truncate">{p.name}</span>
+                          )}
+                          {(note || p.canPress === false) && (
+                            <span className="truncate text-xs text-muted" data-start-note>
+                              {[note, p.canPress === false ? T70_LABELS.noPresser : null].filter(Boolean).join("・")}
+                            </span>
+                          )}
+                        </span>
+                      </Row>
+                    );
+                  })}
+                </div>
+              ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-x-2 gap-y-0.5">
                 {people.map((p) =>
                   p.canPress === false ? (
@@ -278,6 +367,7 @@ export function StartButtons({
                   ),
                 )}
               </div>
+              )}
             </fieldset>
           )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
