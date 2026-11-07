@@ -39,6 +39,7 @@ import { callerContact, callerLabel, callsOf, openMissedCalls } from "@/lib/dril
 import { drillScope, type DrillScope } from "@/lib/drill/db";
 import { nowHour } from "@/lib/drill/engine";
 import { isDrillId } from "@/lib/drill/http";
+import { shownPersons } from "@/lib/drill/person-review";
 import { loadDrillRecord, type DrillRecord } from "@/lib/drill/record";
 import { loadCallRecords, type CallRecord } from "@/lib/drill/responses";
 import { SCORE_LABELS } from "@/lib/drill/score-labels";
@@ -343,6 +344,7 @@ export default async function DrillScreenPage({ params, searchParams }: Props) {
                   drillId={id}
                   view={scoreView(scored.record.score, scored.record.screen.names, scored.record.previous, base)}
                   review={scored.record.review}
+                  persons={shownPersons(scored.record.persons)}
                   canReview={scored.canReview}
                   names={scored.record.screen.names}
                 />

@@ -3,6 +3,9 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { DatabaseSync } from "node:sqlite";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReviewBox } from "../../components/drill/ReviewBox.tsx";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SEED_PEOPLE, type SeedPerson } from "../../seed/people.ts";
 import { seedStatements } from "../../seed/sql.ts";
@@ -316,5 +319,49 @@ describe("文の検査", () => {
     expect(PERSON_REVIEW_SYSTEM).not.toMatch(/死亡|関連死|診断|判定|重症|緊急度|札/);
     expect(REVIEW_SYSTEM).not.toMatch(/緊急度|札/);
     expect(REVIEW_TOPICS).toHaveLength(5);
+  });
+});
+
+describe("講評の画面と紙", () => {
+  const names = { "p-01": "伊藤 一郎", "p-03": "加藤 花子" };
+  const done = {
+    state: "done" as const,
+    ai: {
+      summary: "総評。",
+      findings: [{ person: null, kind: "report" as const, text: "指摘。", basis: null }],
+      sections: [
+        { topic: "order" as const, text: "連絡の順の文。" },
+        { topic: "visit" as const, text: "該当なし" },
+      ],
+      good: ["好手の文。"],
+      model: OPUS,
+      at: START,
+    },
+    edited: null,
+  };
+  const persons = { "p-03": { text: "加藤さんの講評。", good: ["良い手。"], next: ["次の手。"], at: START } };
+
+  it("画面: 好手・項目別（該当なしは出さない）・指摘と、人ごとの講評を名前で開く行。AI の印", () => {
+    const h = renderToStaticMarkup(createElement(ReviewBox, { drillId: "d1", initial: done, persons, canReview: true, names }));
+    expect(h).toContain("好手");
+    expect(h).toContain("好手の文。");
+    expect(h).toContain("項目別");
+    expect(h).toContain("連絡順");
+    expect(h).not.toContain("訪問手配");
+    expect(h).toContain("個別講評");
+    expect(h).toContain("加藤 花子");
+    expect(h).toContain("開く");
+    // 閉じている間は 1 行の文だけ
+    expect(h).toContain("加藤さんの講評。");
+    expect(h).not.toContain("次の手。");
+    expect(h).not.toMatch(/診断|判定|重症|緊急度|札/);
+  });
+
+  it("前の形の講評（項目なし）は今までどおり。人ごとの講評が無ければ欄を出さない", () => {
+    const old = { ...done, ai: { summary: "総評。", findings: done.ai.findings, model: OPUS, at: START } };
+    const h = renderToStaticMarkup(createElement(ReviewBox, { drillId: "d1", initial: old, canReview: true, names }));
+    expect(h).toContain("総評。");
+    expect(h).not.toContain("項目別");
+    expect(h).not.toContain("個別講評");
   });
 });

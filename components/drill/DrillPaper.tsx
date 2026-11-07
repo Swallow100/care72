@@ -41,7 +41,7 @@ import { FREE_WAY_LABELS } from "@/lib/drill/action-terms";
 import type { DrillRecord, StoredReview } from "@/lib/drill/record";
 import type { ReviewBody } from "@/lib/drill/review";
 import { knownOf, rowOf, talkTurns, visitOf } from "@/lib/drill/score";
-import { askWords, factWords, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
+import { askWords, factWords, REVIEW_ERROR_LABELS, REVIEW_KIND_LABELS, REVIEW_SECTION_NONE, REVIEW_TOPIC_LABELS, REVIEW_UI, SCORE_LABELS } from "@/lib/drill/score-labels";
 import { extraText, scoreView } from "@/lib/drill/score-view";
 import { isVirtual, lastHour, scenarioOf } from "@/lib/drill/scenarios";
 import { hourSpanText, hourText } from "@/lib/drill/time-text";
@@ -51,7 +51,7 @@ import { paperText } from "@/lib/forms/paper-text";
 import { warekiText } from "@/lib/forms/wareki";
 import { checkMark, isSourceId, sourceById } from "@/lib/sources";
 
-export type DrillPaperRecord = Pick<DrillRecord, "screen" | "score" | "review" | "calls" | "previous">;
+export type DrillPaperRecord = Pick<DrillRecord, "screen" | "score" | "review" | "calls" | "previous"> & Partial<Pick<DrillRecord, "persons">>;
 
 const t = paperText;
 
@@ -120,6 +120,11 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
   ].sort((x, y) => (minuteOf.get(x.action) ?? 0) - (minuteOf.get(y.action) ?? 0) || x.order - y.order);
   const started = jst(screen.drill.started_at);
   const shown = shownOf(review);
+  // 人ごとの講評（T185）。参加者の並びで、できた人だけ
+  const personRows = score.participants.flatMap((p) => {
+    const d = record.persons?.[p]?.done;
+    return d ? [[p, d] as const] : [];
+  });
   const scenario = screen.drill.scenario;
   const prev = view.previous ? jst(view.previous.startedAt) : null;
 
@@ -473,6 +478,37 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
                 {t(shown.summary)}
               </p>
             )}
+            {/* 好手と項目別（T185。前の講評には無い） */}
+            {shown.good && shown.good.length > 0 && (
+              <p data-review-good>
+                <span className="f-l">{REVIEW_UI.good}</span>
+                {shown.good.map((g) => t(g)).join(" / ")}
+              </p>
+            )}
+            {(shown.sections ?? []).some((s) => s.text !== REVIEW_SECTION_NONE) && (
+              <table className="sheet drill-table" data-review-topics>
+                <colgroup>
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "86%" }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>{REVIEW_UI.topics}</th>
+                    <th>{REVIEW_UI.review}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(shown.sections ?? [])
+                    .filter((s) => s.text !== REVIEW_SECTION_NONE)
+                    .map((s) => (
+                      <tr key={s.topic} data-topic={s.topic}>
+                        <td>{REVIEW_TOPIC_LABELS[s.topic]}</td>
+                        <td>{t(s.text)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
             {shown.findings.length > 0 && (
               <table className="sheet drill-table">
                 <colgroup>
@@ -516,6 +552,45 @@ export function DrillPaper({ record, office, today, ai = null }: { record: Drill
           </>
         ) : (
           <p data-review-none>{noReviewText(review, ai)}</p>
+        )}
+        {/* 人ごとの講評（T185。訓練の間に作った物。AI の下書き） */}
+        {personRows.length > 0 && (
+          <table className="sheet drill-table" data-review-persons>
+            <colgroup>
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "86%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>{REVIEW_UI.persons}</th>
+                <th>
+                  {REVIEW_UI.review} <span className="drill-ai">AI</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {personRows.map(([p, r]) => (
+                <tr key={p} data-review-person={p}>
+                  <td>{name(p)}</td>
+                  <td>
+                    {r.text && <div>{t(r.text)}</div>}
+                    {r.good.length > 0 && (
+                      <div>
+                        <span className="f-l">{REVIEW_UI.good}</span>
+                        {r.good.map((g) => t(g)).join(" / ")}
+                      </div>
+                    )}
+                    {r.next.length > 0 && (
+                      <div>
+                        <span className="f-l">{REVIEW_UI.personNext}</span>
+                        {r.next.map((g) => t(g)).join(" / ")}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </section>
 

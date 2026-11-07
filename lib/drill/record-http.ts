@@ -95,7 +95,13 @@ export function parseEdit(v: unknown, base: ReviewBody): ReviewBody | null {
     const text = clip(f.text, FINDING_TEXT_MAX * 2);
     if (text) findings.push({ ...base.findings[i], text });
   }
-  return { summary: clip(e.summary, SUMMARY_MAX * 2), findings };
+  // 項目ごとの文と良かった所（T185）は直す欄が無いので元のまま残す
+  return {
+    summary: clip(e.summary, SUMMARY_MAX * 2),
+    findings,
+    ...(base.sections ? { sections: base.sections } : {}),
+    ...(base.good ? { good: base.good } : {}),
+  };
 }
 
 /**

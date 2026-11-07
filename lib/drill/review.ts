@@ -37,7 +37,7 @@ import type { ActionRecord } from "./engine.ts";
 import { ACTION_LABELS, SCENARIO_LABELS, STATUS_LABELS } from "./labels.ts";
 import type { CallRecord } from "./responses.ts";
 import { scenarioOf, type Ask } from "./scenarios.ts";
-import { askWords, factWords, FORM9_PLAN_LABELS, minuteText, personWords, reachedText } from "./score-labels.ts";
+import { askWords, factWords, FORM9_PLAN_LABELS, minuteText, personWords, reachedText, REVIEW_SECTION_NONE } from "./score-labels.ts";
 import { PLAN_ACT_WORDS, PLAN_NEED_WORDS, sameWording } from "./person-facts.ts";
 import {
   extrasCount,
@@ -89,7 +89,7 @@ export const GOOD_ASK = 60;
 export const GOOD_TEXT_MAX = 100;
 
 /** 項目の中身の無いときの言葉（画面はこの項目を出さない） */
-export const SECTION_NONE = "該当なし";
+export const SECTION_NONE = REVIEW_SECTION_NONE;
 
 /** 講評の失敗（lib/claude の失敗の名前。画面と記録に残す） */
 export type ReviewError = "not_configured" | "limit" | "refused" | "bad_output" | "failed" | "leak";
