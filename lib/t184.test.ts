@@ -48,3 +48,9 @@ describe("T184 の 7: 本人の 1 枚の上の帯", () => {
     expect(page).not.toMatch(/label="手書き"|label="読み未登録"/);
   });
 });
+
+describe("T184 の 10: 閉じたメニュー", () => {
+  it("閉じている間は hidden（display: none でキーボード・読み上げに出ない。手元の画面で Tab が入らないことを見た）", () => {
+    expect(read("../components/ui/Menu.tsx")).toContain("hidden={!open}");
+  });
+});
