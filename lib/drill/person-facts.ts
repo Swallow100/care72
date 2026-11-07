@@ -680,7 +680,8 @@ export function factsOf(input: FactsInput): Facts {
   // 避難先へ向かうと言った（家族・本人。打ち消しは見ない）。計画の手段で移れた時刻は planMoveAt（T139・T141）
   const said = state?.saying?.normalize("NFKC") ?? "";
   // 前の連絡でもう家の外にいる人（「避難所に移りました」）は向かう途中ではない（T141）
-  const goingSaid = !!state && where !== "shelter" && where !== "other" && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said);
+  // 計画の説明と条件つきの言い方は向かうと言った事にしない（T178。startsMove と同じ。記録の無いまま帳面のいる所が移る）
+  const goingSaid = !!state && where !== "shelter" && where !== "other" && GO_INTENT.test(said) && !RETURNED.test(said) && !GO_NOT.test(said) && !PLAN_TALK.test(said) && !MOVE_IF.test(said);
   const movedAt = goingSaid ? planMoveAt({ world, actions, person, plan, hurt: hurt !== null, going: prevAt, now }) : null;
   // 向かえない訳（T141）: plan 計画に避難先か手段が無い・blocked 道が通れない・浸水・helper ふだん動けない人に手伝う人・乗り物がまだ来ていない
   const goWhy: GoWhy | null = !plan?.move ? "plan" : blocked ? "blocked" : (plan.immobile && !plan.carer && movedAt === null) || (hurt && !plan.helper) ? "helper" : null;

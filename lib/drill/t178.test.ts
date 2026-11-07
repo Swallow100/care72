@@ -88,6 +88,16 @@ describe("移る言葉（門と台が同じ表）", () => {
     expect(startsMove(mover, ["車が来たら移ります。今は家です。"])).toBe(false);
   });
 
+  it("条件つき・計画の説明の文では帳面のいる所も移らない。移ると言った文は前のまま", () => {
+    const placeAfter = (saying: string) => {
+      const prev = { color: "green" as const, source: "family" as const, whereNow: "home" as const, at: 10, saying, doing: null, atHome: null, injured: null, canMove: null, hasMedicine: null };
+      return factsOf({ person: "p-10", world: EMPTY_WORLD, state: prev, actions: [], now: 700, plan: planOf(source("p-10")), inOutage: false, startHour: 10 }).place?.where;
+    };
+    expect(placeAfter("道が通れたら避難所へ移ります。")).toBe("home");
+    expect(placeAfter("計画では避難所に行く予定です。")).toBe("home");
+    expect(placeAfter("これから避難所へ移ります。")).toBe("shelter");
+  });
+
   it("通話でも移れない人は同じ文で落ちる", () => {
     expect(sentenceSlip("これから移ります。", talkContextOf(stuck))).toBe("move_said");
     expect(sentenceSlip("移る手だてを頼みます。", talkContextOf(stuck))).not.toBe("move_said");
