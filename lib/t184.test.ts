@@ -29,3 +29,14 @@ describe("T184 の 6: 訓練の開始", () => {
     expect(page).not.toContain("data-virtual-note");
   });
 });
+
+describe("T184 の 5: 訓練の着信", () => {
+  it("鳴っている間は下の幅いっぱいの帯で、帯の高さぶんの余白を足す（押せる物に重ねたままにしない）", () => {
+    const call = read("../components/drill/IncomingCall.tsx");
+    const ringing = call.slice(call.indexOf("if (!talkingNow) {"), call.indexOf("// 応答した通話の間だけ画面の上に重ねる"));
+    expect(ringing).toContain("<IncomingRoom />");
+    expect(ringing).not.toContain("right-4 bottom-4");
+    for (const a of ["later", "decline", "answer"]) expect(ringing).toContain(`data-incoming-action="${a}"`);
+    expect(call).toMatch(/if \(later\) \{[^]*<IncomingRoom \/>/);
+  });
+});

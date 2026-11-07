@@ -19,6 +19,8 @@
 //   窓の上に「N / M」と「対応済 K」（切ったあとに次の着信が鳴ると、同じ窓のままに見えて切れていないと読まれた）
 // - T166: 鳴っている間は窓で画面を止めない（右下の面。上の帯・次まで・自動進行・事業所への入口が押せる。前は窓の外を押せず「押せない」と読まれた）。
 //   応答した通話の間だけ今までどおり画面の上に重ねる。「後で」は時間を進める物と読まれたので「保留」
+// - T184: 鳴っている間は右下の窓でなく、画面の下の幅いっぱいの帯に 1 行で（1280×800 で窓が手配の右の列と地図に重なった）。
+//   帯と保留の 1 行の高さぶんの余白を画面の終わりに足す（IncomingRoom）
 // 色は安否の印（塗り）だけ。押したときは灰色だけ（Button の data-press）。
 
 import { PhoneXMarkIcon, SpeakerWaveIcon } from "@heroicons/react/20/solid";
@@ -376,48 +378,101 @@ export function IncomingCall({
   if (later) {
     // 窓を閉じている間: 画面の下の 1 行（訓練の画面は押せる）。押すと同じ着信の窓に戻る
     return (
-      <div
-        role="region"
-        aria-label={CALL_UI.incoming}
-        className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-panel px-4 py-2 text-sm shadow-[0_-1px_0_rgb(0_0_0/0.12)]"
-        data-incoming-later={current.signal}
-      >
-        <CallInIcon aria-hidden className="size-4 shrink-0" />
-        <span className="font-bold">
-          {phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking} <span className="tabular-nums">{queue.length}</span> {CALL_UI.unit}
-        </span>
-        <span>
-          {current.caller} {current.name}
-        </span>
-        <Button kind="main" size="sm" icon={PhoneIcon} onClick={() => setLater(false)} data-incoming-action="reopen">
-          {CALL_UI.reopen}
-        </Button>
-      </div>
+      <>
+        <IncomingRoom />
+        <div
+          role="region"
+          aria-label={CALL_UI.incoming}
+          className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-panel px-4 py-2 text-sm shadow-[0_-1px_0_rgb(0_0_0/0.12)]"
+          data-incoming-later={current.signal}
+        >
+          <CallInIcon aria-hidden className="size-4 shrink-0" />
+          <span className="font-bold">
+            {phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking} <span className="tabular-nums">{queue.length}</span> {CALL_UI.unit}
+          </span>
+          <span>
+            {current.caller} {current.name}
+          </span>
+          <Button kind="main" size="sm" icon={PhoneIcon} onClick={() => setLater(false)} data-incoming-action="reopen">
+            {CALL_UI.reopen}
+          </Button>
+        </div>
+      </>
     );
   }
   const canReply = phase === "talking" && step !== undefined && actions !== undefined && !closed && callLeft(lines) > 0;
   const talkingNow = phase === "talking";
+  if (!talkingNow) {
+    // 鳴っている間（T184）: 画面の下の幅いっぱいの帯に 1 行で（相手・名前・出ない・出る・保留）。前は右下の窓で、1280×800 で手配の右の列と
+    // 地図に重なり、出るまで一部が押せなかった。帯の高さぶんの余白を画面の終わりに足すので、送れば全部の物に手が届く。画面は止めない（T166）
+    return (
+      <>
+        <IncomingRoom />
+        <div
+          role="dialog"
+          aria-labelledby="incoming-caller"
+          className="fixed inset-x-0 bottom-0 z-50 bg-panel shadow-[0_-1px_0_rgb(0_0_0/0.12)] dark:bg-panel2"
+          data-incoming={current.signal}
+          data-phase={phase}
+        >
+          <div ref={boxRef} tabIndex={-1} className="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 outline-none">
+            <div className="flex items-center gap-2 text-sm">
+              <CallInIcon aria-hidden className="size-4 shrink-0" />
+              <span className="font-bold">{CALL_UI.incoming}</span>
+              <span className="text-muted tabular-nums">{clockLabel(current.minute)}</span>
+              {total > 1 && (
+                <span className="text-muted tabular-nums" data-incoming-count>
+                  {index} / {total}
+                </span>
+              )}
+              {index > 1 && (
+                <span role="status" className="text-muted" data-incoming-done={index - 1}>
+                  {CALL_UI.handled} <span className="tabular-nums">{index - 1}</span>
+                </span>
+              )}
+            </div>
+            <h2 id="incoming-caller" className="text-xl leading-8 font-bold" data-incoming-caller>
+              {current.caller}
+            </h2>
+            <p className="text-lg leading-7" data-incoming-name>
+              {current.name}
+              <FictionalMark kind={fiction} />
+            </p>
+            {error && (
+              <p role="alert" className="text-xs font-bold text-danger" data-incoming-error>
+                {error}
+              </p>
+            )}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button kind="quiet" icon={LaterIcon} onClick={() => setLater(true)} data-incoming-action="later">
+                {CALL_UI.later}
+              </Button>
+              <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} data-incoming-action="decline">
+                {CALL_UI.decline}
+              </Button>
+              <Button kind="main" size="lg" icon={PhoneIcon} onClick={answer} className="min-w-40" data-incoming-action="answer">
+                {CALL_UI.answer}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+  // 応答した通話の間だけ画面の上に重ねる（T166）
   return (
     <div
       role="dialog"
-      aria-modal={talkingNow ? "true" : undefined}
+      aria-modal="true"
       aria-labelledby="incoming-caller"
-      className={
-        talkingNow
-          ? "fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[8vh]"
-          : "fixed right-4 bottom-4 z-50 w-[min(28rem,calc(100vw-2rem))] rounded-lg shadow-[0_2px_8px_rgb(0_0_0/0.18)] dark:shadow-[0_2px_10px_rgb(0_0_0/0.6)]"
-      }
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-[8vh]"
       data-incoming={current.signal}
       data-phase={phase}
     >
-      <div
-        ref={boxRef}
-        tabIndex={-1}
-        className={`w-full rounded-lg bg-panel p-5 outline-none ${talkingNow ? "max-w-xl" : "dark:bg-panel2"}`}
-      >
+      <div ref={boxRef} tabIndex={-1} className="w-full max-w-xl rounded-lg bg-panel p-5 outline-none">
         <div className="flex items-center gap-2 text-sm">
           <CallInIcon aria-hidden className="size-4 shrink-0" />
-          <span className="font-bold">{phase === "ringing" ? CALL_UI.incoming : CALL_UI.talking}</span>
+          <span className="font-bold">{CALL_UI.talking}</span>
           <span className="text-muted tabular-nums">{clockLabel(current.minute)}</span>
           {total > 1 && (
             <span className="text-muted tabular-nums" data-incoming-count>
@@ -441,58 +496,53 @@ export function IncomingCall({
           <FictionalMark kind={fiction} />
         </p>
 
-        {phase === "talking" && (
-          <div className="mt-4" data-incoming-speech>
-            <CallLines
-              speaker={current.caller}
-              first={{ text: current.saying, ai: current.ai, lead: <StateTag tone={TONES[current.color]}>{TONE_WORDS[current.color]}</StateTag> }}
-              lines={lines}
-            />
-            {voiceOk && (
-              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted" data-incoming-voice={playing ? "playing" : "ready"}>
-                <SpeakerWaveIcon aria-hidden className="size-3.5 shrink-0" />
-                <span>{playing ? CALL_UI.playing : CALL_UI.voice}</span>
-                <AiMark small title="AI の音声（Gemini TTS）" />
-              </p>
-            )}
-          </div>
-        )}
+        <div className="mt-4" data-incoming-speech>
+          <CallLines
+            speaker={current.caller}
+            first={{ text: current.saying, ai: current.ai, lead: <StateTag tone={TONES[current.color]}>{TONE_WORDS[current.color]}</StateTag> }}
+            lines={lines}
+          />
+          {voiceOk && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted" data-incoming-voice={playing ? "playing" : "ready"}>
+              <SpeakerWaveIcon aria-hidden className="size-3.5 shrink-0" />
+              <span>{playing ? CALL_UI.playing : CALL_UI.voice}</span>
+              <AiMark small title="AI の音声（Gemini TTS）" />
+            </p>
+          )}
+        </div>
         {error && (
           <p role="alert" className="mt-1.5 text-xs font-bold text-danger" data-incoming-error>
             {error}
           </p>
         )}
 
-        {phase === "ringing" ? (
-          <div className="mt-5 flex gap-2">
-            <Button kind="danger" size="lg" icon={PhoneXMarkIcon} onClick={done} data-incoming-action="decline">
-              {CALL_UI.decline}
-            </Button>
-            <Button kind="main" size="lg" icon={PhoneIcon} onClick={answer} className="flex-1" data-incoming-action="answer">
-              {CALL_UI.answer}
-            </Button>
-          </div>
-        ) : (
-          <div className="sticky bottom-0 -mx-5 mt-3 bg-panel px-5 pt-1" data-incoming-reply={canReply ? "" : undefined}>
-            <CallReply
-              asks={CALL_IN_ASKS}
-              lines={lines}
-              canReply={canReply}
-              busy={busy}
-              onSend={send}
-              onHangUp={done}
-              mark="incoming"
-              extra={
-                voiceOk ? (
-                  <Button kind="plain" size="lg" icon={SpeakerWaveIcon} onClick={() => void play()} disabled={playing} data-incoming-action="play">
-                    {CALL_UI.play}
-                  </Button>
-                ) : null
-              }
-            />
-          </div>
-        )}
+        <div className="sticky bottom-0 -mx-5 mt-3 bg-panel px-5 pt-1" data-incoming-reply={canReply ? "" : undefined}>
+          <CallReply
+            asks={CALL_IN_ASKS}
+            lines={lines}
+            canReply={canReply}
+            busy={busy}
+            onSend={send}
+            onHangUp={done}
+            mark="incoming"
+            extra={
+              voiceOk ? (
+                <Button kind="plain" size="lg" icon={SpeakerWaveIcon} onClick={() => void play()} disabled={playing} data-incoming-action="play">
+                  {CALL_UI.play}
+                </Button>
+              ) : null
+            }
+          />
+        </div>
       </div>
     </div>
   );
+}
+
+/**
+ * 画面の下の帯（鳴っている間・保留の 1 行）の高さぶんの余白（T184）。帯は画面に重ねて留めるので、画面の終わりに同じ高さを足し、
+ * 送れば帯の下に隠れた物（地図・手配の列の末尾）にも手が届くように
+ */
+function IncomingRoom() {
+  return <div aria-hidden className="h-40 sm:h-24" data-incoming-room />;
 }
