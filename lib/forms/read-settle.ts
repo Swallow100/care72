@@ -68,7 +68,9 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
     // あり・なし の並びの後ろの空き（「□なし □あり 病名（　）」）は、あり の中身を書く所。外すかは空きの決まり（freeSlots）で、ほかに書く欄が無ければ残す（T181）
     const yesNo = marks.length === 2 && marks.some((m) => YES_WORD.test(squeeze(m.label))) && marks.some((m) => NO_WORD.test(squeeze(m.label)));
     const last = fields.indexOf(marks[marks.length - 1]);
-    const keep = (g: MappingField) => yesNo && fields.indexOf(g) > last;
+    // 選択肢の名前の括弧（「あり（　）」「その他（　）」）は選ぶ欄の子（form-shape.ts の bracketOwner）で、項目を外さない。外すと子にならず、あり の中身が紙から消えた（T181）
+    const optionName = (g: MappingField) => marks.some((m) => squeeze(m.label) === bracketBase(g));
+    const keep = (g: MappingField) => optionName(g) || (yesNo && fields.indexOf(g) > last);
     const boxes = marks.map((m) => m.box!);
     const box = unionOf(boxes);
     out.push({

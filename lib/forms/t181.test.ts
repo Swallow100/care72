@@ -26,7 +26,7 @@ const fld = (o: Partial<ReadField> & Pick<ReadField, "label" | "shape" | "item" 
   option_boxes: [],
   ...o,
 });
-const read = (fields: ReturnType<typeof fld>[], pages = 1): FormMapping => checkReadResult({ title: "架空の様式", issuer: "", pages, typeface: "gothic", fields }).mapping;
+const read = (fields: ReturnType<typeof fld>[], pages = 1): FormMapping => checkReadResult({ title: "架空の様式", issuer: "", pages, typeface: "gothic", fields } as never).mapping;
 
 /** 紙の印の x と字 */
 function paper(m: FormMapping, id: string) {
@@ -42,7 +42,7 @@ function paper(m: FormMapping, id: string) {
 const itemOf = (m: FormMapping, label: string) => m.fields.find((f) => f.label === label)?.item;
 
 // アレルギーのある人（p-03）と無い人（p-01）
-const ALLERGY = seed("p-03").ledger!.medical.allergies;
+const ALLERGY: readonly string[] = seed("p-03").ledger?.medical.allergies ?? [];
 const allergies = "medical.allergies" as const;
 
 describe("T181 1 □ と同じ行の空きの欄を、ほかに値を書く欄が無ければ外さない", () => {
@@ -75,5 +75,46 @@ describe("T181 1 □ と同じ行の空きの欄を、ほかに値を書く欄�
     expect(itemOf(m, "病名（　　）")).toBeNull();
     expect(itemOf(m, "アレルギーの内容")).toBe(allergies);
     expect(paper(m, "p-03").texts.join("")).toContain(ALLERGY[0]);
+  });
+});
+
+describe("T181 2 「□なし □あり（　）」の括弧の中に値を書く", () => {
+  const no = fld({ label: "なし", shape: "check", item: allergies, box: box(0.3, 0.3, 0.012, 0.01) });
+  const yes = fld({ label: "あり", shape: "check", item: allergies, box: box(0.4, 0.3, 0.012, 0.01) });
+  const bracket = (item: LedgerItemKey | null = allergies) => fld({ label: "あり（　）", shape: "text", item, box: box(0.44, 0.297, 0.4, 0.016) });
+
+  it("□ 2 つと括弧に読んだ形: 括弧は外さず（選ぶ欄の あり の子）、あり の人は括弧に名前、なし の人は なし に印だけ", () => {
+    const m = read([no, yes, bracket()]);
+    expect(m.fields.map((f) => [f.shape, f.item])).toEqual([
+      ["choice", allergies],
+      ["text", allergies],
+    ]);
+    const p = paper(m, "p-03");
+    expect(p.marks).toEqual([0.4]);
+    expect(p.texts.join("")).toContain(ALLERGY[0]);
+    expect(p.unplaced).toEqual([]);
+    expect(paper(m, "p-01")).toMatchObject({ marks: [0.3], texts: [], unplaced: [] });
+  });
+
+  it("選ぶ欄 1 つと括弧に読んだ形も同じ紙", () => {
+    const choice = fld({ label: "アレルギー", shape: "choice", item: allergies, options: ["なし", "あり"], box: box(0.3, 0.3, 0.55, 0.016), option_boxes: [box(0.3, 0.3, 0.012, 0.01), box(0.4, 0.3, 0.012, 0.01)] });
+    const m = read([choice, bracket()]);
+    const p = paper(m, "p-03");
+    expect(p.marks).toEqual([0.4]);
+    expect(p.texts.join("")).toContain(ALLERGY[0]);
+    expect(paper(m, "p-01")).toMatchObject({ marks: [0.3], texts: [] });
+  });
+
+  it("あり・なし でない選択肢の括弧（その他（　））は今までどおり選ぶ欄の添えの置き場（値を丸ごと書かない）", () => {
+    const transport = "evacuation.transport" as const;
+    const marks = ["徒歩", "車いす", "その他"].map((l, i) => fld({ section: "避難", label: l, shape: "check", item: transport, box: box(0.2 + i * 0.12, 0.3, 0.012, 0.01) }));
+    const other = fld({ section: "避難", label: "その他（　）", shape: "text", item: transport, box: box(0.51, 0.297, 0.2, 0.016) });
+    const m = read([...marks, other]);
+    expect(m.fields.map((f) => [f.shape, f.item])).toEqual([
+      ["choice", transport],
+      ["text", transport],
+    ]);
+    // 徒歩の人は 徒歩 の □ に印だけ
+    expect(paper(m, "p-08")).toMatchObject({ marks: [0.2], texts: [], unplaced: [] });
   });
 });

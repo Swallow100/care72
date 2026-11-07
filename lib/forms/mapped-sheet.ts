@@ -959,6 +959,9 @@ export function phoneRole(cell: Cell, field: MappingField, fields: readonly Mapp
   return lines.length > 0 ? { kind: "value", lines } : unconfirmed();
 }
 
+/** あり・なし の 2 つを選ぶ欄か */
+const yesNoOwner = (f: MappingField) => f.shape === "choice" && f.options.length === 2 && f.options.some((o) => YES.test(normalizeWord(o))) && f.options.some((o) => NO.test(normalizeWord(o)));
+
 /**
  * 括弧の子の欄（T164、lib/forms/form-shape.ts の bracketOwner）の値。親の値を丸ごと書かない:
  * - 親が種類の □（「□抗血小板薬（　）」）: その種類の値だけ（同じ行の左の □ の種類も。「□抗凝固薬 □ワーファリン（　）」は抗凝固薬の全部）。無ければ空
@@ -968,6 +971,8 @@ export function phoneRole(cell: Cell, field: MappingField, fields: readonly Mapp
  */
 export function bracketCell(cell: Cell, own: BracketOwner<MappingField>, ctx: Ctx): Cell {
   if (cell.kind === "withheld" || cell.kind === "handwrite") return cell;
+  // あり・なし の選ぶ欄の「あり（　）」（T181）: あり の中身を書く所。値があれば項目の値（あり に印は親の選ぶ欄）、無ければ空（「なし」は親の印）
+  if (own.option !== null && yesNoOwner(own.owner) && YES.test(normalizeWord(own.owner.options[own.option] ?? ""))) return cell.kind === "value" ? cell : EMPTY;
   if (own.option !== null) return EMPTY;
   const item = own.owner.item;
   if (!item) return cell;
