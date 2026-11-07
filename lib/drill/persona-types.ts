@@ -32,7 +32,15 @@ export type DrillTurn = {
    * 前からの訓練の安否には無い（lib/drill/calls.ts の isPhoneTurn は無ければ前の見分け方）
    */
   via?: Via;
+  /** 計画の手段で移り始めた記録（T177。門が付ける。保存して作り直しでも同じ記録になる） */
+  move?: TurnMove;
 };
+
+/**
+ * 移った事のコードの記録（T177）。to 移った先・at 着く時刻（発災からの分。今より後なら向かっている途中）・by plan 計画の手段で自力で移った・turn 連絡で分かった
+ * （想定の表の行か、手が来たあとの連絡）。移送の車は世界の到着（world.arrivals）が記録。本人役の言葉だけでは記録にならない
+ */
+export type TurnMove = { to: WhereNow; at: number; by: "plan" | "turn" };
 
 /** 本人ごとの今の様子（いちばん新しい 1 刻みの安否） */
 export type PersonState = {
@@ -59,6 +67,8 @@ export type PersonState = {
    * 時刻は言った時の時間。刻みから作り直すときも同じに引く。無ければ予定なし（前からの保存は前の言葉から引く）
    */
   promised?: ReadonlyArray<{ kind: "call119" | "fetch"; at: number }>;
+  /** 移った事の記録（T177、lib/drill/person-facts.ts の carryMoved）。刻みから作り直すときも同じに引く。無ければ移っていない */
+  moved?: TurnMove;
 };
 
 /**

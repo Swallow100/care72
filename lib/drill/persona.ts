@@ -103,7 +103,10 @@ import {
   downSaying,
   phoneAnswerer,
   screenAsks,
+  planMoveOf,
   screenTurn,
+  startsMove,
+  talkContextOf,
   whenWordsOf,
   slipContextOf,
   stuckDown,
@@ -629,11 +632,32 @@ function ownIncidents(incidents: ReadonlyArray<DrillIncident>, person: string): 
  * 切れた知らせが緑で届いた）。表の言う事の元も使わない（まだ動いている前提の文なので）。ほかの行は表のまま。どちらもコードの決めで、AI は決めない
  */
 function rowsFor(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
-  if (!stuckDown(facts)) return [...fixed];
-  return fixed.map((f): FixedTurn => {
+  const rows = awayRows(fixed, facts);
+  if (!stuckDown(facts)) return rows;
+  return rows.map((f): FixedTurn => {
     if (f.color !== "green") return f;
     const { whereNow, saying: _saying, ...rest } = f;
     return { ...rest, color: "red", ...(whereNow === "home" ? { atHome: true } : {}) };
+  });
+}
+
+/**
+ * 移った記録のある人の表の行の「家」を移った先に（T177。評価の 10 回目で、移送の車で移った人に、表の 24 時間の行が家と言った）。表の行は移す手を知らない骨なので、いる所は記録を優先する。
+ * 文は家にいる前提なので使わない。行き先の分からない人（wandering）は見ない
+ */
+function awayRows(fixed: ReadonlyArray<FixedTurn>, facts: Facts): FixedTurn[] {
+  const p = facts.place;
+  if (!p || p.where === "home" || p.by === "wandering" || p.loose) return [...fixed];
+  return fixed.map((f): FixedTurn => {
+    if (f.color === "green" && f.whereNow === "home") {
+      const { saying: _saying, ...rest } = f;
+      return { ...rest, whereNow: p.where };
+    }
+    if (f.color === "red" && f.atHome === true) {
+      const { saying: _saying, ...rest } = f;
+      return { ...rest, atHome: false };
+    }
+    return f;
   });
 }
 
@@ -703,7 +727,7 @@ export const PERSONA_SYSTEM = [
   "8. ケアマネの手が届いたあとの最初の連絡は、その手の結果を受けた様子を言う（来た人がいる・物が届いた・移った）。頼んだ事が済んでいなければ、また頼んでよい。",
   "9. 119 を勧められたら、かけるか・かけないかを言葉で言う（かけたかどうかは自分で決める）。救急が来た先の事は言わない。「死亡」と言わない。",
   "10. 「今の様子」「持ちこたえる時間の今」と食い違う事を言わない（来た人・届いた物・復旧した物を、まだと言わない。切れた分を、まだ残ると言わない。いつからの状態かも合わせる）。時刻を言う時は、ここに書いた時計の時刻か「N 時間前」で言う。発災からの時間の数を時刻として言わない。",
-  "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える・決めた避難先へ移る）。計画に無い事で、手も人も無いのに良くならない。",
+  "11. 「人ごとの事実」と食い違う事を言わない（いる所、前に言った動けない・けが、同居の人、声が無いと伝えた事、電気と予備）。「計画」にある事は連絡が取れなくても計画どおりにする（予備に替える。避難先へ移るのは「移動」の行が移れると書いている時だけ）。計画に無い事で、手も人も無いのに良くならない。いる所が変わるのはコードの記録だけで、言葉では移らない。",
   "12. 「ケアマネに言われた事」は覚えて従う（待つと言われたら待つ・119 を勧められたらかけるか決める）。従えない時は理由を言う（道が通れない・動けない など）。",
   "13. 「前の連絡」で言った文・言い回しをくり返さない。変わった事を先に言い、変わらない事は言わないか「〜のまま」と短く。前に伝えた事（着いた・切れた・置いてきた）を新しい事のように言わない。",
 ].join("\n");
@@ -912,6 +936,8 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
     const rowPlace = placeOfState({ color: lastRow.color, whereNow: lastRow.whereNow ?? null, atHome: lastRow.atHome ?? null }) ?? facts.place?.where ?? null;
     const speech = factText(speechBy(lastRow.source), lastRow.source, rowPlace);
     const doingOk = factText(doing, lastRow.source, rowPlace);
+    // 表の行のいる所が家の人の「これから移ります」は計画の手段の記録に（T177）
+    const go = rowPlace === "home" && startsMove(facts, [speech, doingOk]) ? { move: planMoveOf(facts) } : {};
     return fixed.map((f, i) => {
       const last = i === fixed.length - 1;
       const aiSaying = last ? speech : null;
@@ -922,6 +948,7 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
         saying: aiSaying ?? f.saying ?? (last && stuckDown(facts) ? downSaying(input.state?.saying, nowMinuteOf(input)) : null),
         doing: f.doing ?? aiDoing,
         ai: aiSaying !== null || aiDoing !== null,
+        ...(last ? go : {}),
       };
     });
   }
@@ -966,7 +993,9 @@ export function personaTurns(input: PersonaInput, persona: Persona, answer: Pers
   const saying = factText(turn.saying, turn.source, place);
   const doingKept = factText(turn.doing, turn.source, place);
   // 言葉が全部落ちた・連絡しないと答えた時はコードの言葉（T174）。AI の物が何も残らなければ AI の印を付けない
-  return [{ ...turn, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: doingKept, ai: turn.ai && (saying !== null || doingKept !== null || !stuck) }];
+  // 自力で移れる人の「これから移ります」は計画の手段の記録に（T177）
+  const go = !turn.move && place === "home" && startsMove(facts, [saying, doingKept]) ? { move: planMoveOf(facts) } : {};
+  return [{ ...turn, ...go, saying: saying ?? (stuck ? downSaying(input.state?.saying, nowMinuteOf(input)) : null), doing: doingKept, ai: turn.ai && (saying !== null || doingKept !== null || !stuck) }];
 }
 
 /** 機器が止まったまま連絡が途切れたら、ほかの理由の呼び出しでも連絡する間（分。T174。止まった時刻の呼び出しが 1 区切りの人数で持ち越された時） */
@@ -1282,7 +1311,7 @@ export async function personaCallReply(
     const r = await askJson(buildPersonaCallRequest(persona.profile, text), ctx);
     // 電話に出た人の続柄に合わない文を落とす（T121）。帳面と食い違う文も（T130）
     const speaker = calleeSpeaker(persona, call.callee, persona.sex ?? null);
-    const said = dropFactSlips(dropSlips(r.value.speech, speaker, persona), { ...slipContextOf(facts), ...(speaker?.source === "family" ? { kin: null } : {}) });
+    const said = dropFactSlips(dropSlips(r.value.speech, speaker, persona), { ...talkContextOf(facts), ...(speaker?.source === "family" ? { kin: null } : {}) });
     const speech = cleanPersonaWords(said, persona.key, SPEECH_MAX);
     return { pickup, speech, ai: speech !== null };
   } catch (e) {
@@ -1384,7 +1413,7 @@ export async function personaTalkReply(
 ): Promise<TalkReplyWords> {
   try {
     const r = await askJson(buildPersonaTalkRequest(persona.profile, talk), ctx);
-    const raw = facts ? dropFactSlips(r.value.speech, { ...slipContextOf(facts), kin: null }) : r.value.speech;
+    const raw = facts ? dropFactSlips(r.value.speech, { ...talkContextOf(facts), kin: null }) : r.value.speech;
     let speech = cleanPersonaWords(raw, key, SPEECH_MAX);
     if (speech !== null && prior && prior.said.length > 0) {
       const fresh = dropRepeats(speech, prior.said).trim();
@@ -1465,7 +1494,7 @@ export async function personaVisitReport(persona: Persona, visit: PersonaVisit, 
     const r = await askJson(buildPersonaVisitRequest(persona.profile, text), ctx);
     // T130: 帳面と食い違う文と、電気が戻ったあとの電池・電源の頼み事を落とす（訪問は本人のいる所へ。T167 で帳面のいる所に。分からなければ家）
     const facts = personaFacts(persona, { person: visit.person, world: visit.world, state: visit.state, now: Math.round(visit.hour * 60), night: visit.night, startHour: visit.startHour });
-    const slip = { ...slipContextOf(facts, facts.place?.where ?? "home"), kin: null };
+    const slip = { ...talkContextOf(facts, facts.place?.where ?? "home"), kin: null };
     const condition = cleanPersonaWords(dropFactSlips(r.value.condition, slip), persona.key, VISIT_CONDITION_MAX, CONDITION_BANNED);
     const speech = cleanPersonaWords(dropFactSlips(r.value.speech, slip), persona.key, SPEECH_MAX);
     const asks = screenAsks(asksOf(r.value.asks, VISIT_ASKS_MAX), facts);

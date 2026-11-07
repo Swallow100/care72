@@ -1337,6 +1337,7 @@ function asTurn(person: string | null, p: Partial<TurnPayload>): DrillTurn | nul
     at: typeof p.at === "number" ? p.at : 0,
     ...(typeof p.signal === "string" ? { signal: p.signal } : {}),
     ...((VIAS as readonly unknown[]).includes(p.via) ? { via: p.via! } : {}),
+    ...(p.move && (WHERE_NOW as readonly string[]).includes(p.move.to) && typeof p.move.at === "number" && (p.move.by === "plan" || p.move.by === "turn") ? { move: p.move } : {}),
   };
 }
 

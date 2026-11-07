@@ -83,7 +83,8 @@ import { HOME_TOWN_MAX } from "./self.ts";
 
 export { isStaffCount, STAFF_MAX } from "./options.ts";
 import { fallbackIncidents } from "./world-apply.ts";
-import { addGated, carryPlace, carryPromises, dropRoadSlips, noteIssued, type GateLog } from "./person-facts.ts";
+import { addGated, carryMoved,
+  carryPlace, carryPromises, dropRoadSlips, noteIssued, type GateLog } from "./person-facts.ts";
 import { startHourOf } from "./night.ts";
 
 const HOUR_MS = 3_600_000;
@@ -345,6 +346,8 @@ function personStateOf(t: DrillTurn, prev: PersonState | null = null): PersonSta
   const known = t.color === "red" && t.atHome === false ? carryPlace(prev, t) : null;
   // 言って済んでいない予定（T165。門で落とした同じ予定の言い直しは言葉に無いので、前の様子から引き継ぐ）
   const promised = carryPromises(prev, t);
+  // 移った事の記録（T177）。門を通った安否と世界の到着だけが記録になる
+  const moved = carryMoved(prev, t);
   return {
     color: t.color,
     source: t.source,
@@ -358,6 +361,7 @@ function personStateOf(t: DrillTurn, prev: PersonState | null = null): PersonSta
     hasMedicine: t.hasMedicine,
     ...(known === "shelter" ? { placeKnown: known } : {}),
     ...(promised.length > 0 ? { promised } : {}),
+    ...(moved ? { moved } : {}),
   };
 }
 
