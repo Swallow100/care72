@@ -44,6 +44,11 @@ export function easy(markup: string, opts: { strong?: boolean } = {}): Word[] {
  */
 export const YOMI: Readonly<Record<string, string>> = {
   // 避難先
+  // 種の避難先の地名（T183 で実在の指定避難所にした）
+  福音: "ふくいん",
+  湯築: "ゆづき",
+  三津浜: "みつはま",
+  潮見: "しおみ",
   小学校: "しょうがっこう",
   中学校: "ちゅうがっこう",
   高校: "こうこう",
