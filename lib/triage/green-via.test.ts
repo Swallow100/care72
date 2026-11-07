@@ -120,3 +120,35 @@ describe("受入から来た緑（T78）: 色・並び・理由は表のまま�
     ]);
   });
 });
+
+describe("案 11（T184）: 受け入れの前の赤を理由に添える（色・並びは変えない）", () => {
+  it.fails("赤（けが・動けない）のあとの受け入れ: 理由に「受入前 本人が「けが」「動けない」」", () => {
+    const r = triage(entry("p1", [RED_INJURY], [ARRIVAL]), S);
+    expect([r.color, r.rule, r.group]).toEqual(["green", "green", 4]);
+    expect(r.reason).toBe("到着 みどり小学校、受入前 本人が「けが」「動けない」");
+    expect(r.qualifiers).toContain("before_arrival");
+  });
+
+  it.fails("搬送でも「受入前」。黄の行（時計の半分）でも添える。答えの無い赤は「無事じゃない」", () => {
+    const moved = triage(entry("p1", [RED_INJURY], [{ ...ARRIVAL, transported: { at: iso(3), to: "市民病院" } }]), S);
+    expect(moved.reason).toBe("搬送 市民病院、受入前 本人が「けが」「動けない」");
+    const p: TriagePerson = {
+      ...person("p1"),
+      clocks: [{ kind: "medication", category: "insulin", label: "インスリン", value: 8, unit: "hour", starts_on: "disaster" }],
+    };
+    const half = triage({ person: p, signals: [RED_INJURY], arrivals: [ARRIVAL] }, S);
+    expect([half.color, half.rule]).toEqual(["yellow", "green_clock_half"]);
+    expect(half.reason).toMatch(/^受入・インスリン .*、受入前 本人が「けが」「動けない」$/);
+    const plain = triage(entry("p1", [{ color: "red", source: "family", at: iso(1) }], [ARRIVAL]), S);
+    expect(plain.reason).toBe("到着 みどり小学校、受入前 家族が「無事じゃない」");
+  });
+
+  it("前が緑・受け入れのあとの赤・受け入れのあとの緑には添えない", () => {
+    const greenBefore = triage(entry("p1", [{ color: "green", source: "self", at: iso(1) }], [ARRIVAL]), S);
+    expect(greenBefore.reason).toBe("到着 みどり小学校");
+    const redAfter = triage(entry("p1", [{ ...RED_INJURY, at: iso(3) }], [ARRIVAL]), S);
+    expect(redAfter.reason).not.toContain("受入前");
+    const greenAfter = triage(entry("p1", [RED_INJURY, { color: "green", source: "self", at: iso(3) }], [ARRIVAL]), S);
+    expect(greenAfter.reason).toBe("本人が「無事」");
+  });
+});
