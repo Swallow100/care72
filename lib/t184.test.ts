@@ -40,3 +40,11 @@ describe("T184 の 5: 訓練の着信", () => {
     expect(call).toMatch(/if \(later\) \{[^]*<IncomingRoom \/>/);
   });
 });
+
+describe("T184 の 7: 本人の 1 枚の上の帯", () => {
+  it("何の数かが分かる言葉（手で書き入れる欄・ふりがなの付かない漢字）", () => {
+    const page = read("../app/people/[id]/forms/own/page.tsx");
+    expect(page).toContain(`const OWN_CHECK_LABELS = { write: "要記入", reading: "ふりがな無" } as const;`);
+    expect(page).not.toMatch(/label="手書き"|label="読み未登録"/);
+  });
+});
