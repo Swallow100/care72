@@ -205,8 +205,21 @@ export function markPair(a: ShapeField, b: ShapeField): boolean {
   return (a.shape === "check" && b.shape === "check") || (a.page !== b.page && mark(a) && mark(b));
 }
 
-/** 同じ値・同じ項目でも重複と見ない組（頁ごとの同じ場所・電話と携帯・□ と括弧・印だけの欄） */
-export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) || phonePair(a, b) || bracketPair(a, b) || markPair(a, b);
+/**
+ * □ とその行の字の欄の組（T176。「□認定あり　要介護状態区分［　　］」）。□ に印、字の欄に中身で、値を 2 回書かない（T161 の括弧の組と同じ形で、字の欄の名前が □ と違う物）。
+ * □ を読むか読まないかで、同じ紙の重複が 0 と 54 に揺れた（評価の 9・10 回目）。同じ頁で、字の欄の真ん中が □ より右で □ と同じ行の物だけ
+ */
+export function markDetailPair(a: ShapeField, b: ShapeField): boolean {
+  if (a.page !== b.page || itemOf(a) === null || itemOf(a) !== itemOf(b)) return false;
+  const [mark, text] = a.shape === "check" ? [a, b] : [b, a];
+  if (mark.shape !== "check" || (text.shape !== "text" && text.shape !== "lines") || !mark.box || !text.box) return false;
+  const m = center(mark.box);
+  const t = center(text.box);
+  return t.x > m.x && Math.abs(t.y - m.y) <= Math.max(mark.box.h, text.box.h);
+}
+
+/** 同じ値・同じ項目でも重複と見ない組（頁ごとの同じ場所・電話と携帯・□ と括弧・□ と行の字の欄・印だけの欄） */
+export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) || phonePair(a, b) || bracketPair(a, b) || markDetailPair(a, b) || markPair(a, b);
 
 /**
  * 前の欄（同じ値・同じ項目の物）があっても f を重複と見ないか: 同じ頁の前の欄が電話と携帯の組・□ と括弧の組だけで、ほかの頁の前の欄があれば
@@ -214,7 +227,7 @@ export const allowedTwice = (a: ShapeField, b: ShapeField) => pageRepeat(a, b) |
  */
 export function repeatOk(before: readonly ShapeField[], f: ShapeField): boolean {
   const same = before.filter((g) => g.page === f.page);
-  if (same.some((g) => !phonePair(g, f) && !bracketPair(g, f) && !markPair(g, f))) return false;
+  if (same.some((g) => !phonePair(g, f) && !bracketPair(g, f) && !markDetailPair(g, f) && !markPair(g, f))) return false;
   const other = before.filter((g) => g.page !== f.page);
   return other.length === 0 || other.some((g) => allowedTwice(g, f));
 }

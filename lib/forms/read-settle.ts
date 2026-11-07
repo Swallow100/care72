@@ -8,8 +8,13 @@
 // 3. 同じ項目の字の欄が 2 つ以上: 決まり 12 の「同じ項目を 2 つの欄に重ねない」に。項目の名前の言葉を持つ欄か、いちばん広い欄に残し、ほかは項目なし（候補に残す。確かめの画面で人が選べる）。
 //    狭い欄（表の 1 列目の「持ち出し品」）に当たって置けない形と、「自由記述」と「その他」に同じ値が 2 回出る形が揺れていた
 // 4. 署名の隣の日付の作成日は外す（署名した日は本人が書く）
+//
+// T176（評価の 10 回目。r9 の 1 頁に 0 欄だった形が読み取りで増え、要確認 591 → 1,463。docs/progress/t176.md）:
+// 5. 親と同じ項目を当てた、名前に空きのある字の欄（「（　）級」「【　】」）で、選択肢や □ の子でない物は項目なし。空きは級・種類・深さを書く所で、項目の値を丸ごと書く所でない
+// 6. 3 を □・選ぶ欄のある組にも。□ に印、字の欄に中身の組（1 つの字の欄）はそのまま、字の欄が 2 つ以上なら 1 つに
+// 7. 同じ頁の同じ項目の選ぶ欄は 1 つ（2 つ目の選択肢は項目の種類でないので印が付かず、置けない）
 
-import { bracketOwner, bracketBase, extraItemFields } from "./form-shape.ts";
+import { allowedTwice, bracketOwner, bracketBase, extraItemFields } from "./form-shape.ts";
 import { ledgerItem, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
 
 /** □ ごとに同じ項目を当てる種類の項目（読み取りの決まり 12 の例外。紙は □ の名前と台帳の種類を照らす） */
@@ -82,7 +87,13 @@ function namesItem(f: MappingField, item: LedgerItemKey): boolean {
     .some((w) => w.length >= 2 && w !== "その他" && label.includes(w));
 }
 
-/** 同じ項目の字の欄が 2 つ以上あれば、いちばん広い欄に残す。ほかは項目なし */
+/** 値を書く形の欄（□・選ぶ欄は印で、値を書かない） */
+const carriesValue = (f: MappingField) => isText(f) || f.shape === "date" || f.shape === "phone";
+
+/**
+ * 同じ項目の字の欄が 2 つ以上あれば、いちばん広い欄に残す。ほかは項目なし。
+ * □・選ぶ欄は組に入れない（□ に印、字の欄に中身）。外すのは字の欄だけ（日付・電話の形の欄は読み取りが形まで読んだ物なので外さない）
+ */
 function keepWidest(fields: readonly MappingField[]): MappingField[] {
   const extra = extraItemFields(fields.filter((f) => !f.removed && f.shape !== "handwrite" && !bracketOwner(f, fields)).map((f) => ({ ...f, box: f.box ?? null })));
   if (extra.size === 0) return [...fields];
@@ -90,17 +101,61 @@ function keepWidest(fields: readonly MappingField[]): MappingField[] {
   const items = new Set([...extra.keys()].map((id) => fields.find((f) => f.id === id)!.item!));
   for (const item of items) {
     const same = fields.filter((f) => f.item === item && !f.removed && !bracketOwner(f, fields));
-    const ids = new Set<string>([...extra].filter(([id]) => fields.find((f) => f.id === id)!.item === item).flatMap(([id, first]) => [id, first.id]));
-    const group = same.filter((f) => ids.has(f.id));
-    // 選ぶ欄・□ のある組は字の欄の重なりでない（□ に印、字の欄に中身）
-    if (group.length < 2 || !group.every(isText)) continue;
+    // 組は、余った欄と、それより前で同じ所にならない最初の値の欄（□ が先にあると extra の first は □）
+    const ids = new Set<string>(
+      [...extra.keys()]
+        .map((id) => same.find((f) => f.id === id))
+        .filter((f): f is MappingField => !!f)
+        .flatMap((f) => [f.id, ...same.filter((g) => g !== f && carriesValue(g) && same.indexOf(g) < same.indexOf(f) && !allowedTwice({ ...g, box: g.box ?? null }, { ...f, box: f.box ?? null })).slice(0, 1).map((g) => g.id)]),
+    );
+    const group = same.filter((f) => ids.has(f.id) && carriesValue(f));
+    if (group.length < 2) continue;
+    const shaped = group.find((f) => !isText(f));
     const wide = group.reduce((a, b) => (area(b.box) > area(a.box) ? b : a));
     // 項目の名前の言葉を持つ欄が狭すぎなければそちら（「特記事項」と「助けてほしいこと」に「その他の特記」）
     const named = group.find((f) => namesItem(f, item) && area(f.box) * 10 >= area(wide.box));
-    const keep = named ?? wide;
-    for (const f of group) if (f !== keep) drop.add(f.id);
+    const keep = named ?? shaped ?? wide;
+    for (const f of group) if (f !== keep && isText(f)) drop.add(f.id);
   }
   return fields.map((f) => (drop.has(f.id) ? freed(f, "同じ項目の欄") : f));
+}
+
+const nfkc = (s: string) => s.normalize("NFKC");
+const squeeze = (s: string) => nfkc(s).replace(/\s/g, "");
+/** 名前の中の空き: 空の括弧（「（　）」「【　】」「（～）」）か、中に空白のある括弧（「（浸水想定　m）」） */
+const SLOT = /[(【[〔](?:[^)】\]〕]*\s[^)】\]〕]*|[~〜ー\-・…]*)[)】\]〕]/;
+
+/** 親の □ か選ぶ欄（同じ頁・同じ段・同じ項目）があり、選択肢や □ の子でない空きの字の欄は項目なし */
+function freeSlots(fields: readonly MappingField[]): MappingField[] {
+  return fields.map((f) => {
+    if (f.removed || !f.item || !isText(f) || PER_MARK_ITEMS.has(f.item) || !SLOT.test(nfkc(f.label))) return f;
+    const parents = fields.filter((g) => g !== f && !g.removed && g.page === f.page && g.section === f.section && g.item === f.item && (g.shape === "check" || g.shape === "choice"));
+    if (parents.length === 0 || bracketOwner(f, fields)) return f;
+    // 「要介護（　）級」と □ 要介護の組は □ の中身を書く所（読み取りの補いの括弧、item-hints.ts の 1）
+    const head = squeeze(nfkc(f.label).split(SLOT)[0]);
+    if (parents.some((g) => g.shape === "check" && squeeze(g.label) === head)) return f;
+    return freed(f, "親の項目の空き");
+  });
+}
+
+/** 項目の名前そのものを持つ欄か（「支援の内容」と「支援内容」。部分の言葉だけの namesItem より強い） */
+const fullName = (f: MappingField, item: LedgerItemKey) => squeeze(f.label).includes(squeeze(ledgerItem(item).label).replace(/の/g, ""));
+
+/** 同じ頁の同じ項目の選ぶ欄は 1 つ（項目の名前そのものの欄か、最初の欄）。種類ごとの項目は決まり 12 の例外 */
+function keepOneChoice(fields: readonly MappingField[]): MappingField[] {
+  const groups = new Map<string, MappingField[]>();
+  for (const f of fields) {
+    if (f.removed || f.shape !== "choice" || !f.item || PER_MARK_ITEMS.has(f.item)) continue;
+    const k = `${f.page}\u0000${f.item}`;
+    groups.set(k, [...(groups.get(k) ?? []), f]);
+  }
+  const drop = new Set<string>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const keep = group.find((f) => fullName(f, f.item!)) ?? group[0];
+    for (const f of group) if (f !== keep) drop.add(f.id);
+  }
+  return drop.size === 0 ? [...fields] : fields.map((f) => (drop.has(f.id) ? freed(f, "同じ項目の選ぶ欄") : f));
 }
 
 const SIGN_WORD = /署名|自署|押印|記名|同意|承諾/;
@@ -116,5 +171,5 @@ function freeSignDates(fields: readonly MappingField[]): MappingField[] {
 
 /** 読み取りの答えの形をそろえる（欄の id は変えない。まとめた □ は最初の □ の id） */
 export function settleRead(fields: readonly MappingField[]): MappingField[] {
-  return keepWidest(mergeMarks(freeSignDates(fields)));
+  return keepWidest(freeSlots(keepOneChoice(mergeMarks(freeSignDates(fields)))));
 }
