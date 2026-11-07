@@ -72,7 +72,7 @@ function NestedBlock({ block: b, current }: { block: ChoiceBlock<RoleChoice>; cu
   if (b.kind === "one") return null;
   return (
     <div className="flex items-center gap-2 px-2">
-      <span className="w-20 shrink-0 truncate text-xs text-muted" title={b.label}>
+      <span className="w-20 shrink-0 text-xs break-words text-muted">
         {b.label}
       </span>
       <div className="flex min-w-0 flex-wrap gap-1">
@@ -87,7 +87,7 @@ function NestedBlock({ block: b, current }: { block: ChoiceBlock<RoleChoice>; cu
               aria-current={now ? "true" : undefined}
               aria-label={c.name}
               title={c.name}
-              className={`relative inline-flex min-h-8 items-center rounded bg-panel px-2 text-sm whitespace-nowrap dark:bg-panel2 ${
+              className={`relative inline-flex min-h-8 items-center rounded bg-panel px-2 text-left text-sm dark:bg-panel2 ${
                 now ? "font-bold outline-2 -outline-offset-2 outline-accent" : ""
               }`}
             >

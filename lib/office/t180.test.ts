@@ -501,3 +501,14 @@ describe("役変更の一覧の形", () => {
     expect(html).toContain('aria-label="役変更 ケアマネジャー・新規事業所"');
   });
 });
+
+describe("同じ続柄", () => {
+  it("同じ利用者に同じ続柄が 2 人いれば、ボタンに名前を添える", async () => {
+    const s = await judgeSandbox();
+    const a = await addPerson(s.principal, "架空 花子", "カクウ ハナコ");
+    sqlite.prepare("INSERT INTO contacts (id, person_id, kind, relation, name, sort) VALUES (?, ?, 'family', '娘', '架空 桃', 3)").run(`${a.family}-2`, a.personId);
+    const list = await roleChoicesFor(db, s.principal);
+    const labels = list.filter((c) => c.role.startsWith("sandbox:family:")).map((c) => c.label);
+    expect(labels).toEqual(["娘 架空 花子の娘", "娘 架空 桃"]);
+  });
+});

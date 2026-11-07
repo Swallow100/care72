@@ -129,15 +129,19 @@ async function sandboxChoices(db: D1Database, admin: SandboxAdmin): Promise<Role
       row: person.name,
       name: `${person.name} ${ROLE_LABELS.self}`,
     });
-    for (const c of contacts.results) {
-      if (c.person_id !== person.id) continue;
-      const label = c.relation?.trim() || ROLE_LABELS.family;
+    const mine = contacts.results.filter((c) => c.person_id === person.id);
+    const relationOf = (c: (typeof mine)[number]) => c.relation?.trim() || ROLE_LABELS.family;
+    for (const c of mine) {
+      // 同じ続柄が 2 人以上いれば名前を添える（「娘」「娘」で見分けが付かないように）
+      const relation = relationOf(c);
+      const twin = mine.filter((x) => relationOf(x) === relation).length > 1;
+      const label = twin && c.name ? `${relation} ${c.name}` : relation;
       out.push({
         role: sandboxChoiceValue({ role: "family", id: c.id }),
         label,
         sub: null,
         row: person.name,
-        name: [`${person.name}さんの${label}`, c.name].filter(Boolean).join(" "),
+        name: [`${person.name}さんの${relation}`, c.name].filter(Boolean).join(" "),
       });
     }
   }

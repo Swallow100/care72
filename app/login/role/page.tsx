@@ -46,7 +46,7 @@ export default async function RoleSelectPage({ searchParams }: { searchParams: P
                   </p>
                 ) : b.kind === "row" ? (
                   <div key={j} className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 truncate text-sm text-muted" title={b.label}>
+                    <span className="w-24 shrink-0 text-sm break-words text-muted">
                       {b.label}
                     </span>
                     <div className="flex min-w-0 flex-wrap gap-1">
@@ -59,7 +59,7 @@ export default async function RoleSelectPage({ searchParams }: { searchParams: P
                           aria-current={now === c.role ? "true" : undefined}
                           aria-label={c.name}
                           title={c.name}
-                          className={`relative inline-flex min-h-10 items-center rounded-lg bg-panel px-3 font-bold whitespace-nowrap ${
+                          className={`relative inline-flex min-h-10 items-center rounded-lg bg-panel px-3 text-left font-bold ${
                             now === c.role ? "outline-2 -outline-offset-2 outline-accent" : ""
                           }`}
                         >
