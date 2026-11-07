@@ -3,17 +3,17 @@
 // 医療の印と時計は 1 つの欄（T150。前は「医療」の印と「時計」の欄に同じ時計が並び、担当一覧の右の面の狭い幅では縦に 2 回出た）。
 // 印の数の元でない時計（同じ区分の 2 つ目・印の区分に入らない時計）だけを印の下に 1 行ずつ、時計の全部の 1 行は印に触れた時に（T143 の Hint）。
 // その上の 1 行に 名前・年齢・介護度・計画・未確認。
-// 優先は平時が骨格の段（色は時計の長さ。医療の印と同じ）、発災時（T09 で災害モードを入れたとき）は色と言葉と理由の 1 行。
+// 優先は平時が骨格の段（色を付けない。T187）、発災時（T09 で災害モードを入れたとき）は色と言葉と理由の 1 行。
 // 見る人の範囲（head.show、lib/consent/scope.ts）の外の物は欄ごと出さない（医療班・行政に同意の無い人は名前・カナ・年齢と状態の色だけ）。
 
-import type { HeadClock, HeadMedical, PersonHead as Head } from "@/lib/person";
+import type { HeadClock, HeadMedical, Pending, PersonHead as Head } from "@/lib/person";
 import { BLANK_LABELS, CLOCK_TEXT_LABELS, HEAD_LABELS, PLAN_DRILL_LABELS } from "@/lib/labels";
 import { Mark, StateText } from "@/components/ui/Tag";
 import { FOCUS_ALL } from "@/lib/intake/targets";
 import { Hint } from "./Hint";
 import { TargetLink } from "./TargetLink";
 import { MedLines } from "./MedLines";
-import { LineText, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
+import { LineText, PendingMark, REASON_TEXT, StateTag, TONE_TEXT, type Level } from "./parts";
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -107,18 +107,20 @@ function UnconfirmedCount({ n }: { n: number }) {
 
 /** 避難先 1・2 と手段（T150。担当一覧の行の詳細の「避難先」と同じ並び） */
 function EvacuationCell({ e }: { e: NonNullable<Head["evacuation"]> }) {
-  const rows: Array<[string, string | null]> = [
-    ["1", e.first],
-    ["2", e.second],
-    [HEAD_LABELS.transport, e.transport],
+  const rows: Array<[string, string | null, readonly Pending[]]> = [
+    ["1", e.first, e.pending.first],
+    ["2", e.second, e.pending.second],
+    [HEAD_LABELS.transport, e.transport, e.pending.transport],
   ];
   return (
     <dl className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-sm" data-head-evacuation>
-      {rows.map(([label, value]) => (
+      {rows.map(([label, value, pending]) => (
         <div key={label} className="contents">
           <dt className="text-xs text-muted">{label}</dt>
-          {/* 空は「未入力」（本人のページの欄と同じ。「未確認」は聞いて分からなかった欄の言葉。T79） */}
-          <dd className="min-w-0 break-words">{value ?? <span className="text-muted">{BLANK_LABELS.blank}</span>}</dd>
+          {/* 空で台帳の pending があれば下の「避難」の区分と同じ「未確認 不明」、無ければ「未入力」（まだ誰も入れていない。T79・T187） */}
+          <dd className="min-w-0 break-words">
+            {value ?? (pending.length > 0 ? <PendingMark pending={pending} /> : <span className="text-muted">{BLANK_LABELS.blank}</span>)}
+          </dd>
         </div>
       ))}
     </dl>
@@ -189,7 +191,8 @@ export function PersonHead({ head, level, titleId }: { head: Head; level: Level;
               <Cell label={HEAD_LABELS.priority}>
                 {p.kind === "tier" ? (
                   <div className="flex items-baseline gap-2">
-                    <span className={`text-3xl leading-none font-bold tabular-nums ${p.tone ? TONE_TEXT[p.tone] : ""}`} data-tone={p.tone ?? undefined}>
+                    {/* 平時の連絡順の数は色を付けない（T187。赤は至急の色。時計の色は横の医療の印） */}
+                    <span className="text-3xl leading-none font-bold tabular-nums" data-head-tier>
                       {p.tier}
                     </span>
                     <span className="text-sm">{p.label}</span>

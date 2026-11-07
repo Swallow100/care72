@@ -158,9 +158,11 @@ describe("本人のページ（種の 10 人）", () => {
     expect(rowOf(v, "evacuation.destination2")?.pending).toHaveLength(1);
     expect(rowOf(v, "people.night_supporter")?.pending).toHaveLength(1);
 
-    // 画面にも 3 つの「未確認」の印が出る（数えない空欄は印にしない）
+    // 区分の中に 3 つの「未確認」の印が出る（数えない空欄は印にしない）。上の段の避難先2 にも同じ印（T187。数は 3 のまま）
     const html = renderToStaticMarkup(createElement(PersonView, { view: v, level: 1 }));
-    expect(html.match(/data-pending="/g)).toHaveLength(3);
+    const head = html.match(/<dl[^>]*data-head-evacuation[\s\S]*?<\/dl>/)![0];
+    expect(head.match(/data-pending="/g)).toHaveLength(1);
+    expect(html.replace(head, "").match(/data-pending="/g)).toHaveLength(3);
   });
 
   it("未確認の数は 10 人とも台帳の pending の数と同じで、区分の数を足すと合う", () => {
@@ -255,18 +257,19 @@ describe("意味の色", () => {
     expect(clockTone(null, false)).toBeNull();
   });
 
-  it("医療の印と優先の段は、その時計の色（同じ意味は同じ色）。印に時計のいちばん短い残り（4h・3日）、走らない時計は項目名だけ", () => {
+  it("医療の印は、その時計の色。平時の連絡順の段は色を付けない（T187）。印に時計のいちばん短い残り（4h・3日）、走らない時計は項目名だけ", () => {
     expect(viewOf("p-01").head.marks).toEqual([
       { label: "酸素", tone: "urgent", remaining: "2h" },
       // 値の無い時計（未確認）は残りを添えない
       { label: "抗凝固", tone: "check", remaining: null },
     ]);
-    expect(viewOf("p-01").head.priority).toMatchObject({ tier: 2, tone: "urgent" });
+    // 酸素の時計は赤だが、連絡順の数は色なし（赤は至急の色。平時に至急に見せない）
+    expect(viewOf("p-01").head.priority).toEqual({ kind: "tier", tier: 2, label: "在宅酸素" });
     expect(viewOf("p-02").head.marks).toEqual([{ label: "呼吸器", tone: "urgent", remaining: "3h" }]);
     expect(viewOf("p-03").head.marks).toEqual([{ label: "透析", tone: "check", remaining: "2日" }]);
     expect(viewOf("p-07").head.marks).toEqual([{ label: "抗凝固", tone: null, remaining: "7日" }]);
     expect(viewOf("p-04").head.marks).toEqual([{ label: "認知症", tone: null, remaining: null }]);
-    expect(viewOf("p-10").head.priority).toMatchObject({ tier: 8, tone: null });
+    expect(viewOf("p-10").head.priority).toMatchObject({ tier: 8 });
   });
 
   it("災害モードは上の医療の印と時計の欄を今の残りに（超過は「超過」を赤、まだ走っていない時計はきっかけから長さと「未開始」。T132）", () => {
@@ -328,7 +331,7 @@ describe("並びと優先", () => {
   });
 
   it("平時は骨格の段、発災時はルールの表の色と理由（T09・T13 が渡す口）", () => {
-    expect(priorityOf(2)).toEqual({ kind: "tier", tier: 2, label: "在宅酸素", tone: null });
+    expect(priorityOf(2)).toEqual({ kind: "tier", tier: 2, label: "在宅酸素" });
     const p = seed("p-02");
     const ledger = parseLedger(JSON.stringify(p.ledger));
     const result = triage(

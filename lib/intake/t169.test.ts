@@ -171,7 +171,9 @@ describe("紫の出方", () => {
   it("見る方の画面の薬の残りの未確認は時計の段に出る（前は印が消えて数と合わなかった）", () => {
     const html = readHtml(rows, "medical.medications");
     expect(html).toMatch(/data-clock="[^"]*" data-target=""/);
-    expect(renderToStaticMarkup(createElement(PersonView, { view: viewOf(rows, null), level: 2 })).match(/data-pending="/g)).toHaveLength(yamada.ledger.pending.length);
+    // 上の段の避難先の欄（T187。区分の行と同じ印を添える）は数えず、区分の中の印が pending の数と同じ
+    const page = renderToStaticMarkup(createElement(PersonView, { view: viewOf(rows, null), level: 2 })).replace(/<dl[^>]*data-head-evacuation[\s\S]*?<\/dl>/, "");
+    expect(page.match(/data-pending="/g)).toHaveLength(yamada.ledger.pending.length);
   });
 
   it("値が入って未確認が消えたら紫も消える（URL の field は残っていても）", () => {

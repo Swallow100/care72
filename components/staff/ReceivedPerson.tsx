@@ -11,7 +11,7 @@
 import { WITHHELD_LABELS } from "@/components/forms/MedicalWithheld";
 import { ChangeHistory } from "@/components/person/ChangeHistory";
 import { Blocks } from "@/components/person/PersonView";
-import { FieldValue, REASON_TEXT, StateTag, TONE_TEXT } from "@/components/person/parts";
+import { FieldValue, REASON_TEXT, StateTag } from "@/components/person/parts";
 import { TimelineComposer } from "@/components/person/TimelineComposer";
 import { ButtonLink } from "@/components/ui/Button";
 import { PaperIcon, PrintIcon } from "@/components/ui/Icon";
@@ -102,7 +102,7 @@ export function ReceivedPerson({
                 (p.kind === "tier" ? (
                   <span className="flex items-baseline gap-1.5 text-sm" data-priority="tier">
                     <span className="text-xs text-muted">{HEAD_LABELS.priority}</span>
-                    <span className={`text-lg leading-none font-bold tabular-nums ${p.tone ? TONE_TEXT[p.tone] : ""}`}>{p.tier}</span>
+                    <span className="text-lg leading-none font-bold tabular-nums">{p.tier}</span>
                     <span>{p.label}</span>
                   </span>
                 ) : (

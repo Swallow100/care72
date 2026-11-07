@@ -395,7 +395,7 @@ export type Section = {
 
 /** 優先。平時は骨格の段、発災時はルールの表の色と理由の 1 行 */
 export type Priority =
-  | { kind: "tier"; tier: Tier; label: string; tone: StateTone | null }
+  | { kind: "tier"; tier: Tier; label: string }
   | { kind: "triage"; color: Color; tone: StateTone; label: string; reason: string };
 
 /** ルールの表の 4 色と意味の色 */
@@ -430,7 +430,13 @@ export type PersonHead = {
   /** 上の段の「医療」の薬の行（T150b、medLines）。3 つまでと残りの数。範囲の外なら空 */
   meds: { lines: MedLine[]; more: number };
   /** 上の段の「避難先」（T150。避難先 1・2 と手段。前の「時計」の欄の所）。避難の区分が範囲の外なら null */
-  evacuation: { first: string | null; second: string | null; transport: string | null } | null;
+  evacuation: {
+    first: string | null;
+    second: string | null;
+    transport: string | null;
+    /** 欄ごとの台帳の pending（空の欄を下の区分と同じ「未確認 不明」にする。無ければ「未入力」。T187） */
+    pending: { first: Pending[]; second: Pending[]; transport: Pending[] };
+  } | null;
   /** 緊急連絡先（順番つき、電話のリンク）。上に大きく出す */
   emergency: Line[];
   /**
@@ -1612,7 +1618,18 @@ function headMedical(
 /** 上の段の「避難先」（T150）: 避難先 1・2 と手段（担当一覧の行の詳細の「避難先」と同じ言葉。lib/map/transport.ts の transportText） */
 function headEvacuation(ledger: Ledger): NonNullable<PersonHead["evacuation"]> {
   const e = ledger.evacuation;
-  return { first: e.destination1?.trim() || null, second: e.destination2?.trim() || null, transport: transportText(e)?.trim() || null };
+  // 空の欄の台帳の pending（下の「避難」の区分の行と同じ当て方。手段の選ぶ欄は「手段」の行。T187）
+  const pendingOf = (key: string) => ledger.pending.filter((p) => matchField(p.field)?.key === key);
+  return {
+    first: e.destination1?.trim() || null,
+    second: e.destination2?.trim() || null,
+    transport: transportText(e)?.trim() || null,
+    pending: {
+      first: pendingOf("evacuation.destination1"),
+      second: pendingOf("evacuation.destination2"),
+      transport: pendingOf("evacuation.transport"),
+    },
+  };
 }
 
 /** 上に大きく出す緊急連絡先: 順番・名前・間柄・電話 */
@@ -1629,10 +1646,10 @@ function headEmergency(contacts: ReadonlyArray<Contact>): Line[] {
 }
 
 /**
- * 優先: 平時は骨格の段（色は医療の印と同じ、時計の長さの色）。
+ * 優先: 平時は骨格の段で、色を付けない（T187。前は医療の時計の色で、酸素の人は大きな赤い数になり至急に見えた。時計の色は横の医療の印が持つ）。
  * 発災時（triage を渡したとき）はルールの表の色と、その言葉（至急・要確認・未知・無事）と理由の 1 行
  */
-export function priorityOf(tier: Tier, triage?: TriageResult | null, tone: StateTone | null = null): Priority {
+export function priorityOf(tier: Tier, triage?: TriageResult | null): Priority {
   if (triage) {
     return {
       kind: "triage",
@@ -1643,7 +1660,7 @@ export function priorityOf(tier: Tier, triage?: TriageResult | null, tone: State
       reason: triage.reason,
     };
   }
-  return { kind: "tier", tier, label: TIER_LABELS[tier], tone };
+  return { kind: "tier", tier, label: TIER_LABELS[tier] };
 }
 
 export type ViewOptions = {
@@ -1793,8 +1810,7 @@ export function toPersonView(rows: PersonPageRows, opts: ViewOptions): PersonVie
   const marks = markItems(clocks, own);
   // 薬の行（T150b）: 上の段の「医療」と担当一覧・訓練の行の詳細の「薬」で同じ物
   const meds = medLines(ledger.medical.medications, clocks, own);
-  const strongest = marks.map((m) => m.tone).filter((t) => t !== null).sort((a, b) => TONE_RANK[b] - TONE_RANK[a])[0];
-  const priority = priorityOf(tier, opts.triage, strongest ?? null);
+  const priority = priorityOf(tier, opts.triage);
   const head: PersonHead = {
     id: person.id,
     name: person.name,
