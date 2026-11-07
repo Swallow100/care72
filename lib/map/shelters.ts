@@ -324,6 +324,17 @@ export async function fetchMapShelters(args: { tiles: ReadonlyArray<Tile>; fetch
   return { ok: true, list: mergeMapShelters(results.flatMap((r) => r ?? [])) };
 }
 
+/** 計画の避難先と地図の避難所を同じ施設と見る距離（m。T184） */
+export const PLANNED_SAME_M = 200;
+
+/**
+ * 地図の避難所のうち、計画の避難先と同じ施設（同じ名前で PLANNED_SAME_M の中）を外す（T184。計画の方の旗だけ出す）。
+ * 前は名前だけで比べ、同じ名前の別の場所の避難所（別の市の「中央公民館」）まで全部隠れていた
+ */
+export function withoutPlanned<T extends Pick<MapShelter, "name" | "at">>(shelters: readonly T[], planned: ReadonlyArray<{ name: string; at: GeoPoint }>): T[] {
+  return shelters.filter((s) => !planned.some((d) => d.name === s.name && distanceM(d.at, s.at) <= PLANNED_SAME_M));
+}
+
 /** 枠の中に置いた印の名前の横幅の見積もり（px。11px の字と左右の余白） */
 const NAME_CHAR_W = 11;
 const NAME_H = 18;
