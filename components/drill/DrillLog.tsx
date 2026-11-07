@@ -13,7 +13,7 @@
 import { AiMark, StateTag } from "@/components/person/parts";
 import type { ActionRecord, DrillTurn, Tick } from "@/lib/drill/engine";
 import { ACTION_STATUS_LABELS } from "@/lib/drill/actions";
-import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel, LOG_LABELS } from "@/lib/drill/labels";
+import { ACTION_LABELS, ACTION_UI, CALL_UI, calleeText, clockLabel, DRILL_LABELS, elapsedLabel, LOG_LABELS, speakerText } from "@/lib/drill/labels";
 import type { FictionKind } from "@/lib/drill/fiction";
 import { buildDrillLog, CALL_LOG_LABELS, knowRouteOf, ROUTE_LABELS, type Awareness, type DrillLog as Log, type KnowRoute, type LogRow, type LogTab } from "@/lib/drill/timeline";
 import type { CallRecord } from "@/lib/drill/responses";
@@ -322,6 +322,7 @@ function HeardItem({ a, c, lead }: { a: ActionRecord; c: Common; lead?: React.Re
   if (!r) return null;
   const who = a.person ? (c.names[a.person] ?? a.person) : null;
   const callee = calleeText(a);
+  const speaker = speakerText(a);
   return (
     <li data-heard={a.id} data-act-kind={a.kind}>
       <div className="flex flex-wrap items-baseline gap-x-1.5">
@@ -351,8 +352,8 @@ function HeardItem({ a, c, lead }: { a: ActionRecord; c: Common; lead?: React.Re
           </span>
         )}
       </div>
-      {r.speech && <Bubble speaker={callee ?? ""} text={r.speech} ai={r.speechAi} voice={c.voiceOf?.(a.id) ?? null} />}
-      {r.talk && <TalkFold lines={r.talk} speaker={callee ?? ""} askPerson={c.live ? a.person : null} />}
+      {r.speech && <Bubble speaker={speaker ?? ""} text={r.speech} ai={r.speechAi} voice={c.voiceOf?.(a.id) ?? null} />}
+      {r.talk && <TalkFold lines={r.talk} speaker={speaker ?? ""} askPerson={c.live ? a.person : null} />}
       {r.visit && <VisitLine visit={r.visit} askPerson={c.live ? a.person : null} />}
     </li>
   );

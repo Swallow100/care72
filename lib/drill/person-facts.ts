@@ -544,10 +544,16 @@ export function carryPlace(
  * 移った事の記録を連絡で重ねる（T177。engine の本人の様子と台の検査が同じに引く）。評価の 10 回目で 3 回とも、本人役の言葉だけで避難所や病院へ移り、次の連絡で家に戻った。
  * 門を通った安否（計画の手段の記録・想定の表の行・手が来たあとの連絡）だけを記録する。表の固定の安否が「家」でも記録は戻さない（移った人の表の行は門が直す。AI が失敗した時の固定の安否だけここに来る）
  */
-export function carryMoved(prev: Pick<PersonState, "moved"> | null, t: Pick<DrillTurn, "color" | "whereNow" | "at"> & { atHome?: boolean | null | undefined; move?: TurnMove | undefined; ai?: boolean | undefined }): TurnMove | null {
+export function carryMoved(
+  prev: Pick<PersonState, "moved"> | null,
+  t: Pick<DrillTurn, "color" | "whereNow" | "at"> & { atHome?: boolean | null | undefined; move?: TurnMove | undefined; ai?: boolean | undefined; saying?: string | null | undefined },
+): TurnMove | null {
   if (t.move) return t.move;
   const before = prev?.moved ?? null;
-  const place = placeOfState({ color: t.color, whereNow: t.whereNow, atHome: t.atHome ?? null });
+  // 赤の「家にいない」で、言葉が避難所と言わない物（どこか分からない）は移った記録にしない（T182。前は「その他へ移った」になり、いる所の問いにコードが「避難先にいます」と言い切った）
+  const loose = t.color === "red" && t.atHome === false && !(t.saying && placeSaid(t.saying) === "shelter");
+  if (loose) return before;
+  const place = t.color === "red" && t.atHome === false ? "shelter" : placeOfState({ color: t.color, whereNow: t.whereNow, atHome: t.atHome ?? null });
   const minute = Math.round(t.at * 60);
   if (place === "shelter" || place === "other") return before && before.to !== "home" ? before : { to: place, at: minute, by: "turn" };
   if (place === "home" && before && before.to !== "home" && before.at <= minute && t.ai === true) return { to: "home", at: minute, by: "turn" };
@@ -593,7 +599,7 @@ export function helpsBetween(world: WorldState, actions: ReadonlyArray<ActionRec
  * 家の辺りが通れないか（T139・T141）。この人の家の近くの道か全体の道の通行止、家の辺りの浸水（仮想の印）、
  * 川の氾濫の間で家が浸水の区域（台帳の浸水の深さが FLOOD_AREA_M 以上）。計画の手段があっても移れない
  */
-export function placeBlocked(world: WorldState, person: string, plan: Plan | null): boolean {
+export function placeBlocked(world: WorldState, person: string, plan: Pick<Plan, "floodM"> | null): boolean {
   const roads = (world.roads ?? []).some((r) => (!r.person || r.person === person) && !r.open);
   const flooded = world.marks?.[person]?.flooded !== undefined || (world.flood === true && (plan?.floodM ?? 0) >= FLOOD_AREA_M);
   return roads || flooded;
@@ -839,9 +845,25 @@ function blockedWords(f: Pick<Facts, "blockedBy">): string {
 }
 
 /**
- * 「どこにいますか」のコードの答え（T177。記録から。名前を書かない）。記録が無い・家にいないだけで行き先の分からない連絡は null（本人役が答える）
+ * 「どこにいますか」のコードの答え（T177。記録から。名前を書かない）。記録が無い・家にいないだけで行き先の分からない連絡は null（本人役が答える）。
+ * near は本人か同居の人が答えるか（T182）。離れた家族・支援者は本人のそばにいないので言い切らず「〜はずです」（前は相手が誰でも「家にいます。」と言い切った）。
+ * 本人役を呼ばない形は同じ（呼び出しを増やさない）
  */
-export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">): string | null {
+export function placeReplyOf(f: Pick<Facts, "place" | "plan" | "moving">, near = true): string | null {
+  const words = placeWordsOf(f);
+  return words && !near ? (FAR_PLACE_WORDS[words] ?? words) : words;
+}
+
+/** 離れた人の言い方（T182。行き先の分からない「分かりません」はそのまま） */
+export const FAR_PLACE_WORDS: Readonly<Record<string, string>> = {
+  "今、向かっている途中です。": "今、向かっている途中のはずです。",
+  "家にいます。": "家にいるはずです。",
+  "避難所にいます。": "避難所にいるはずです。",
+  "病院にいます。": "病院にいるはずです。",
+  "避難先にいます。": "避難先にいるはずです。",
+};
+
+function placeWordsOf(f: Pick<Facts, "place" | "plan" | "moving">): string | null {
   if (f.moving) return "今、向かっている途中です。";
   const p = f.place;
   if (!p || p.loose) return null;
@@ -1205,11 +1227,14 @@ export function roadSlip(t: string, ctx: Pick<SlipContext, "roadClosed" | "dryRo
 
 /**
  * 遅れて当たった監督の道の出来事に、同じ区切りの本人役の言葉を合わせる（T174。評価の 9 回目で、本人役が「道が通れない」と言った同じ分に、並べて呼んだ監督の
- * 開通が当たった）。合わない文だけ落とす。色と 4 問は変えない。plan が無いので閉じているかは道と印だけで見る
+ * 開通が当たった）。合わない文だけ落とす。色と 4 問は変えない。閉じているかは道と印と、家の浸水の深さ（floodM。台帳の洪水の区域の深さ、無ければ null）で見る。
+ * T182: 前は深さを見ず、川の氾濫の区域の人の正しい「冠水で通れない」を落とした。深さが分からない（undefined）まま川の氾濫の間は、閉じているかを決めず落とさない
  */
-export function dropRoadSlips(text: string | null, world: WorldState, person: string, onDrop?: (rule: GateRule) => void): string | null {
+export function dropRoadSlips(text: string | null, world: WorldState, person: string, onDrop?: (rule: GateRule) => void, floodM?: number | null): string | null {
   if (!text) return text;
-  const roadClosed = placeBlocked(world, person, null);
+  const unknownFlood = floodM === undefined && world.flood === true;
+  const shut = placeBlocked(world, person, floodM === undefined ? null : { floodM });
+  const roadClosed = unknownFlood && !shut ? undefined : shut;
   const kept = text.split(/(?<=[。！？!?])/u).filter((s) => {
     if (!roadSlip(s.normalize("NFKC"), { roadClosed })) return true;
     onDrop?.("road_said");

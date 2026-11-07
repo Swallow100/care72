@@ -269,6 +269,9 @@ export const GUARDS: ReadonlyArray<Guard> = [
   { id: "drill-calls-r10", bench: "drill", item: "drill.callsPerRun", op: "<=", value: 77, since: "r11", task: "T177", label: "AI の呼び出しを 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
   { id: "drill-cap-r10", bench: "drill", item: "drill.capRatioMax", op: "<=", value: 0.627, since: "r11", task: "T177", label: "1 訓練の上限との比を 10 回目より増やさない", suspects: ["lib/drill/engine.ts", "lib/drill/clock.ts", "lib/drill/hooks.ts"] },
   { id: "drill-clock-said", bench: "drill", item: "count:drill:facts:clock_said", op: "<=", value: 0, since: "r11", task: "T177", label: "機器の切れた時刻の言葉が帳面の時計と食い違わない", suspects: ["lib/drill/person-facts.ts", "lib/drill/persona.ts", "lib/drill/night.ts"] },
+  // T182: 11/7 夜の見直し。いる所の問いに離れた家族・支援者がコードの答えで言い切った・次へ回した監督の出来事が 72 時間を越えて当たらなかった。どちらも直した形で 0
+  { id: "drill-far-place-said", bench: "drill", item: "count:drill:facts:far_place_said", op: "<=", value: 0, since: "r12", task: "T182", label: "離れた家族・支援者にいる所を言い切らせない", suspects: ["lib/drill/person-facts.ts", "lib/drill/hooks.ts"] },
+  { id: "drill-held-unfired", bench: "drill", item: "count:drill:facts:held_unfired", op: "<=", value: 0, since: "r12", task: "T182", label: "次へ回した出来事を当たらないまま終わらせない", suspects: ["lib/drill/engine.ts", "lib/drill/state-rules.ts"] },
   { id: "drill-world-retired-place", bench: "drill", item: "count:drill:world_place:retired", op: "<=", value: 0, since: "r9", task: "T170", label: "世界の文にやめた架空の地名を出さない", suspects: ["lib/drill/area.ts", "lib/drill/area-demo.ts", "lib/drill/world-apply.ts", "lib/pseudonym/index.ts"] },
 ];
 

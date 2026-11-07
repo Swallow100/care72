@@ -143,14 +143,21 @@ export function createClockHooks(deps: {
       // 機器が止まったままの人を呼ぶ時刻（T174）。電気が戻る・電源が届く・家の外へ移る・直前に連絡があった時は呼ばない。区切りは増やさない（kind down）
       const backAt = (p: string) => Math.min(restored != null ? restored * 60 : Infinity, typeof state.world.supplies?.[p]?.power === "number" ? state.world.supplies[p]!.power! : Infinity);
       const moved = (p: string) => (state.world.arrivals ?? []).some((a) => a.person === p && a.role === "transport" && a.arrived) || ["shelter", "other"].includes(placeOfState(state.people[p] ?? null) ?? "");
+      // 移った事の記録（T177 の carryMoved）で家の外へ着く時刻（T182）。計画の手段で移った人は連絡のいる所が家のままでも、着いたあとは呼ばない
+      // （前は着いたあとも止まったままの呼び出しが続き、上限を食い、避難所の人に「持ちこたえる時間が半分を過ぎた」と渡った）
+      const leftAt = (p: string) => {
+        const m = state.people[p]?.moved;
+        return m && m.to !== "home" ? m.at : Infinity;
+      };
       const follows = members
         .filter((p) => !moved(p))
         .flatMap((p) => {
           const last = state.people[p] ? state.people[p]!.at * 60 : -Infinity;
+          const until = Math.min(backAt(p), leftAt(p));
           return downCuts(planOf({ ledger: sources.get(p)!.ledger, clocks: sources.get(p)!.clocks, contacts: [] }), p, runs)
-            .filter((cut) => cut < backAt(p))
+            .filter((cut) => cut < until)
             .flatMap((cut) => DOWN_FOLLOW_MINUTES.map((gap) => cut + gap))
-            .filter((at) => at < backAt(p) && at - last >= DOWN_FOLLOW_MINUTES[0] / 2)
+            .filter((at) => at < until && at - last >= DOWN_FOLLOW_MINUTES[0] / 2)
             .map((at): ClockMark => ({ person: p, at, kind: "down" }));
         });
       return [...clockMarksOf(runs), ...spares, ...follows];
@@ -296,7 +303,9 @@ export function createTalkHook(deps: { load: () => Promise<ReadonlyMap<string, P
     if (quick) return { said, speech: quickReply(quick, t.lines, t.minute), asks: [], ai: false, called: false, coded: true };
     // T177: いる所を聞く言葉はコードの記録で答える（Haiku を呼ばない）。もう同じ通話で答えていれば短い返事
     if (isPlaceAsk({ ...(t.ask ? { ask: t.ask } : {}), said })) {
-      const words = placeReplyOf(personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }));
+      // 本人か同居の人だけ言い切る（T182。離れた家族・支援者は「〜はずです」）
+      const near = callee === "本人" || (persona.together ?? []).includes(callee);
+      const words = placeReplyOf(personaFacts(persona, { person: t.person, world: t.world, state: t.state, actions: t.actions ?? [], now: t.minute }), near);
       if (words) return { said, speech: t.lines.some((l) => l.who === "them" && l.text === words) ? quickReply("repeat", t.lines, t.minute) : words, asks: [], ai: false, called: false, coded: true };
     }
     let text: ForClaude<{ text: string }>;

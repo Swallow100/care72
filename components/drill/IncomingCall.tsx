@@ -150,6 +150,21 @@ async function fetchVoice(href: string): Promise<string | null> {
 /** 往復の行の声の行き先（着信の声に &line=N を足す。lib/drill/voice.ts の voiceHref と同じ形） */
 const lineVoice = (voice: string | null, line: number): string | null => (voice ? `${voice}&line=${line}` : null);
 
+/** 字を打つ欄でない input の種類 */
+const NOT_TYPING = new Set(["button", "checkbox", "radio", "submit", "reset", "range", "color", "file", "image", "hidden"]);
+
+type Focused = { tagName?: string; type?: string; readOnly?: boolean; disabled?: boolean; isContentEditable?: boolean };
+
+/** 着信の画面の外の入力欄（文字の欄・書ける所）に焦点があるか（T182）。el は今の焦点（既定は document.activeElement） */
+export function typingOutside(box: { contains: (n: never) => boolean } | null, el: Focused | null = typeof document === "undefined" ? null : (document.activeElement as Focused | null)): boolean {
+  if (!el || (box && box.contains(el as never))) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName?.toUpperCase();
+  if (tag === "TEXTAREA") return !el.readOnly && !el.disabled;
+  if (tag === "INPUT") return !el.readOnly && !el.disabled && !NOT_TYPING.has((el.type ?? "text").toLowerCase());
+  return false;
+}
+
 type Voice = { state: "none" } | { state: "loading"; ready: Promise<string | null> } | { state: "ready"; url: string };
 
 export function IncomingCall({
@@ -217,7 +232,10 @@ export function IncomingCall({
     window.dispatchEvent(new CustomEvent(RINGING_EVENT, { detail: current !== null && !later }));
   }, [current, later]);
   useEffect(() => {
-    if (!later) boxRef.current?.focus();
+    if (later) return;
+    // 鳴っている間、着信の外の入力欄（手のメモなど）を打っている途中なら焦点を移さない（T182。打った字が途中で着信の画面へ飛んだ）。応答すれば通話の画面へ
+    if (phase === "ringing" && typingOutside(boxRef.current)) return;
+    boxRef.current?.focus();
   }, [current, phase, later]);
 
   // 着信音（鳴っている間だけ。保留にしたら止める）
