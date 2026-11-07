@@ -207,7 +207,7 @@ export type RunResult = {
   leaks: LeakSummary;
   dir: string;
   /** 比べた前の回との見直しの数の差（T175。--drift-from のときだけ。tools/eval/forms/drift.ts） */
-  drift?: { from: string } & ReviewDrift;
+  drift?: { from: string; sameCode?: boolean } & ReviewDrift;
 };
 
 // ---------- 手元の D1 と R2 ----------
