@@ -187,7 +187,7 @@ describe("着信の往復（保存・上限・門）", () => {
       expectNoPersonalData(JSON.stringify(inputOf(c)));
     }
     expect(inputOf(calls[0])["電話"].text).toContain("ケアマネの今の言葉: 「ご本人は無事ですか」");
-    expect(inputOf(calls[2])["電話"].text).toContain("ケアマネの今の言葉: 「今どこにいますか」");
+    expect(inputOf(calls[2])["電話"].text).toContain("ケアマネの今の言葉: 「ご家族と連絡は取れていますか」");
     // 1 日の上限と同じ数え方（askJson が ai_calls に 1 行ずつ）
     expect(aiRows()).toBe(TALK_MAX);
 
