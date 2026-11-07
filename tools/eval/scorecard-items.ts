@@ -273,8 +273,8 @@ const FORMS: Item[] = [
     agg: "sum",
     forms: (r) => (r.papers.some((p) => p.score?.markExtra !== undefined) ? sumOf(r.papers.map((p) => p.score?.markExtra ?? 0)) : null),
   },
-  { id: "forms.reviewDup", bench: "forms", label: "見直しの重複", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.duplicate ?? 0)) : null) },
-  { id: "forms.reviewCheck", bench: "forms", label: "見直しの要確認", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.check)) : null) },
+  { id: "forms.reviewDup", bench: "forms", notes: ["r11〜（T176）: 同じ行の □ と字の欄の組を重複に数えない（□ に印、字の欄に中身）。r10 までの数と並べるときは同じコードの数え直しと比べる"], label: "見直しの重複", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.kinds.duplicate ?? 0)) : null) },
+  { id: "forms.reviewCheck", bench: "forms", notes: ["r11〜（T176）: 同じ行の □ と字の欄の組を重複に数えない（□ に印、字の欄に中身）。r10 までの数と並べるときは同じコードの数え直しと比べる"], label: "見直しの要確認", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.check)) : null) },
   // T175: 同じ様式の読み取りの回ごとの差。--drift-from で前の回（同じコードで数え直した物）と比べた回だけ数が入る
   { id: "forms.reviewDrift", bench: "forms", label: "見直しの要確認の前の回との差", better: "lower", unit: "count", agg: "sum", forms: (r) => (r.drift?.sameCode === false ? null : (r.drift?.check ?? null)) },
   { id: "forms.reviewFix", bench: "forms", label: "見直しの要修正", better: "lower", unit: "count", agg: "sum", forms: (r) => (hasReview(r) ? sumOf(reviews(r).map((x) => x.rule.fix)) : null) },
