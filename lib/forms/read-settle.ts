@@ -15,7 +15,7 @@
 // 7. 同じ頁の同じ項目の選ぶ欄は 1 つ（2 つ目の選択肢は項目の種類でないので印が付かず、置けない）
 
 import { allowedTwice, bracketOwner, bracketBase, extraItemFields } from "./form-shape.ts";
-import { ledgerItem, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
+import { clean, ledgerItem, LIMITS, type FieldBox, type LedgerItemKey, type MappingField } from "./mapping.ts";
 
 /** □ ごとに同じ項目を当てる種類の項目（読み取りの決まり 12 の例外。紙は □ の名前と台帳の種類を照らす） */
 const PER_MARK_ITEMS: ReadonlySet<LedgerItemKey> = new Set<LedgerItemKey>(["medical.devices", "medical.medications"]);
@@ -53,11 +53,16 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
     const at = fields.indexOf(f);
     const marks: MappingField[] = [f];
     const between: MappingField[] = [];
+    /** 並びのすぐ後ろの項目なしの括弧の欄（枠に含めるだけ。欄はそのまま） */
+    let tail: MappingField | null = null;
     for (const g of fields.slice(at + 1)) {
       if (g.page !== f.page || g.section !== f.section) break;
       if (g.shape === "check" && g.item === f.item && g.box) marks.push(g);
       else if (g.item === f.item && isText(g) && bracketBase(g) !== null) between.push(g);
-      else break;
+      else {
+        if (g.item === null && !g.removed && isText(g) && g.box && marks.some((m) => squeeze(m.label) === bracketBase(g))) tail = g;
+        break;
+      }
     }
     // 名前の無い □・種類の幅の □（要介護 3〜5 の □ は 1 つなので並びにならない）はまとめない
     if (marks.length < 2 || marks.some((m) => m.label.trim() === "")) {
@@ -72,10 +77,12 @@ function mergeMarks(fields: readonly MappingField[]): MappingField[] {
     const optionName = (g: MappingField) => marks.some((m) => squeeze(m.label) === bracketBase(g));
     const keep = (g: MappingField) => optionName(g) || (yesNo && fields.indexOf(g) > last);
     const boxes = marks.map((m) => m.box!);
-    const box = unionOf(boxes);
+    // 欄の枠は選択肢の名前の括弧まで（T181）。□ の並びだけだと「その他」の後ろの空きが枠の外で、その他の中身が置けなかった
+    const box = unionOf([...boxes, ...[...between.filter(optionName), ...(tail ? [tail] : [])].flatMap((g) => (g.box ? [g.box] : []))]);
     out.push({
       ...f,
-      label: f.section || marks.map((m) => m.label).join("・"),
+      // 欄の名前は □ の名前（段の名前にすると、置けなかった欄・確かめの画面で「避難 避難」と出た。T181）
+      label: clean(marks.map((m) => m.label).join("・"), LIMITS.label),
       shape: "choice",
       options: marks.map((m) => m.label),
       optionBoxes: boxes,

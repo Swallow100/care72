@@ -142,3 +142,33 @@ describe("T181 2 「□なし □あり（　）」の括弧の中に値を書�
     expect(paper(m, "p-08")).toMatchObject({ marks: [0.2], texts: [], unplaced: [] });
   });
 });
+
+describe("T181 4 まとめた選ぶ欄の枠は括弧まで、名前は □ の名前", () => {
+  const transport = "evacuation.transport" as const;
+  const marks = ["徒歩", "車いす", "その他"].map((l, i) => fld({ section: "避難", label: l, shape: "check", item: transport, box: box(0.2 + i * 0.12, 0.3, 0.012, 0.01) }));
+  const other = (item: LedgerItemKey | null) => fld({ section: "避難", label: "その他（　）", shape: "text", item, box: box(0.51, 0.297, 0.2, 0.016) });
+  // 補記（娘の車）のある人
+  const who = "p-01";
+
+  it("「その他（　）」の中身は括弧の中に（置けない欄にしない）。括弧の欄の項目が同じでも項目なしでも同じ紙", () => {
+    const note = seed(who).ledger?.evacuation.transport ?? "";
+    expect(note).not.toBe("");
+    for (const item of [transport, null]) {
+      const m = read([...marks, other(item)]);
+      const choice = m.fields[0];
+      expect(choice).toMatchObject({ shape: "choice", label: "徒歩・車いす・その他", options: ["徒歩", "車いす", "その他"] });
+      // 枠は □ の並びと括弧を含む
+      const b = choice.box!;
+      expect(b.x + b.w).toBeCloseTo(0.71, 6);
+      const p = paper(m, who);
+      expect(p.marks).toEqual([0.44]);
+      expect(p.texts.join("")).toContain(note);
+      expect(p.unplaced).toEqual([]);
+    }
+  });
+
+  it("段の名前を欄の名前にしない（置けない欄の名前が「避難 避難」にならない）", () => {
+    const m = read(marks);
+    expect(m.fields[0].label).toBe("徒歩・車いす・その他");
+  });
+});
