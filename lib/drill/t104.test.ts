@@ -354,9 +354,9 @@ describe("仮想の規模（lib/drill/scale.ts）", () => {
   });
 
   it("開始の受け口: 規模は 7 つのどれか、自宅は短い町名だけ", () => {
-    expect(parseStartOptions({ scale: { kind: "earthquake", level: "6強" }, home: " みずほし町 " })).toEqual({
+    expect(parseStartOptions({ scale: { kind: "earthquake", level: "6強" }, home: " 久保田町 " })).toEqual({
       scale: { kind: "earthquake", level: "6強" },
-      home: "みずほし町",
+      home: "久保田町",
     });
     expect(parseStartOptions({ scale: { kind: "earthquake", level: "3" } })).toBeNull();
     expect(parseStartOptions({ scale: "heavy_rain:4" })).toBeNull();
@@ -390,29 +390,29 @@ describe("訓練する人の住む所（lib/drill/self.ts）", () => {
 
   it("監督に渡す言い方は別名と地形の一言だけ（町名を書かない）。既定は事業所の近く", () => {
     expect(homeWords({ home: null }, DEMO_AREA)).toBe("事業所の近く");
-    expect(homeWords({ home: "みずほし町" }, DEMO_AREA)).toBe("乙地区（標高 5〜10 m。近くの川 宮前川・重信川）");
-    expect(homeWords({ home: "みずほし町" }, DEMO_AREA)).not.toContain("みずほし町");
+    expect(homeWords({ home: "久保田町" }, DEMO_AREA)).toBe("乙地区（標高 5〜10 m。近くの川 宮前川・重信川）");
+    expect(homeWords({ home: "久保田町" }, DEMO_AREA)).not.toContain("久保田町");
     const other = areaOf("office-other", [{ ledger: SEED.get("p-01")!.ledger }]);
     expect(homeWords({ home: "知らない町" }, other)).toBe("担当の地区の外");
-    expect(homeFacts({ home: "かわなぎ町" }, DEMO_AREA)).toEqual({ floodM: 5, landslide: false });
+    expect(homeFacts({ home: "市坪西町" }, DEMO_AREA)).toEqual({ floodM: 5, landslide: false });
     expect(homeFacts({ home: null }, DEMO_AREA)).toBeNull();
   });
 
   it("開始: 大雨想定・地震想定の自宅は担当一覧の人の地区の中だけ。10 分版・仮想に来たら捨てる", async () => {
-    expect(await startWith("heavy_rain", { clock: true, home: "みずほし町" })).toEqual({ ok: true, id: ID });
-    expect((await storedState()).options?.home).toBe("みずほし町");
+    expect(await startWith("heavy_rain", { clock: true, home: "久保田町" })).toEqual({ ok: true, id: ID });
+    expect((await storedState()).options?.home).toBe("久保田町");
     sqlite.close();
     sqlite = migratedSqlite();
     for (const s of seedStatements()) sqlite.exec(s);
     db = d1FromSqlite(sqlite);
     expect(await startWith("earthquake", { clock: true, home: "知らない町" })).toEqual({ ok: false, error: "invalid" });
-    expect(await startWith("short", { home: "みずほし町" })).toEqual({ ok: true, id: ID });
+    expect(await startWith("short", { home: "久保田町" })).toEqual({ ok: true, id: ID });
     expect((await storedState()).options?.home).toBeUndefined();
   });
 
   it("監督に渡る自分の欄は連続の時計の大雨想定・地震想定だけ（10 分版・刻みの道・仮想は無し）", () => {
     expect(worldExtras(initialState("heavy_rain", PARTICIPANTS, START, { clock: true }))).toEqual({ self: { home: null } });
-    expect(worldExtras(initialState("earthquake", PARTICIPANTS, START, { clock: true, home: "そらみ台" }))).toEqual({ self: { home: "そらみ台" } });
+    expect(worldExtras(initialState("earthquake", PARTICIPANTS, START, { clock: true, home: "西長戸町" }))).toEqual({ self: { home: "西長戸町" } });
     expect(worldExtras(initialState("heavy_rain", PARTICIPANTS, START))).toEqual({});
     expect(worldExtras(initialState("short", PARTICIPANTS, START))).toEqual({});
     expect(worldExtras(initialState("virtual", PARTICIPANTS, START, { clock: true }))).toEqual({});
@@ -441,11 +441,11 @@ describe("自分の出来事（出来事の表の self_*）", () => {
     expect(eligibleSelfKinds(facts({ night: true }))).toEqual(["self_outage", "self_family", "self_late"]);
     expect(eligibleSelfKinds(facts({ night: true, hour: 6 }))).not.toContain("self_late");
     expect(eligibleSelfKinds(facts({ hour: 6 }))).toContain("self_battery");
-    // 浸水 3 m の地区の停電: 住む所がかわなぎ町（実の区画は 3 m より深い）なら自宅も停電、事業所の近く・みずほし町（0.5 m）は入らない
+    // 浸水 3 m の地区の停電: 住む所が市坪西町（実の区画は 3 m より深い）なら自宅も停電、事業所の近く・久保田町（0.5 m）は入らない
     const hazard: WorldState = { ...EMPTY_WORLD, outage: { area: { scope: "hazard", hazard: "flood", minDepthM: 3 }, since: 3, restoredAt: null } };
-    expect(eligibleSelfKinds(facts({ world: hazard, home: homeFacts({ home: "かわなぎ町" }, DEMO_AREA) }))).toContain("self_outage");
+    expect(eligibleSelfKinds(facts({ world: hazard, home: homeFacts({ home: "市坪西町" }, DEMO_AREA) }))).toContain("self_outage");
     expect(eligibleSelfKinds(facts({ world: hazard, home: null }))).not.toContain("self_outage");
-    expect(eligibleSelfKinds(facts({ world: hazard, home: homeFacts({ home: "みずほし町" }, DEMO_AREA) }))).not.toContain("self_outage");
+    expect(eligibleSelfKinds(facts({ world: hazard, home: homeFacts({ home: "久保田町" }, DEMO_AREA) }))).not.toContain("self_outage");
     // 地区の停電では携帯の電池を出さない（事業所で充電できる）
     expect(eligibleSelfKinds(facts({ world: hazard, hour: 12 }))).not.toContain("self_battery");
     // 停電の無い世界・復旧のあと
@@ -481,7 +481,7 @@ describe("自分の出来事（出来事の表の self_*）", () => {
     };
     const { client, calls } = fake(() => reply(answer));
     const hook = createDirectorHook({ load: seedLoad, ai: aiCtx(client), on: "2026-11-05" });
-    const withSelf = await hook(directorInput({ self: { home: "みずほし町" } }));
+    const withSelf = await hook(directorInput({ self: { home: "久保田町" } }));
     const events = Array.isArray(withSelf) ? withSelf : withSelf.events;
     expect(events.map((e) => [e.inject, e.person ?? null])).toEqual([["self_outage", null]]);
     const incidents = directorIncidents(events, new Set(PARTICIPANTS), 8);

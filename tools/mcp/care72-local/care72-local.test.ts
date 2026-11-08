@@ -62,7 +62,7 @@ function seededDb(file: string, withDrill: boolean) {
   if (withDrill) {
     db.exec(
       `INSERT INTO drills (id, office_id, scenario, status, step, sim_hour, world, score, started_at)
-       VALUES ('drill-t', 'office-demo', 'heavy_rain', 'running', 2, 3, '{"roads":"かわなぎ町の道は通れない"}', NULL, '2026-11-02T08:00:00.000Z')`,
+       VALUES ('drill-t', 'office-demo', 'heavy_rain', 'running', 2, 3, '{"roads":"市坪西町の道は通れない"}', NULL, '2026-11-02T08:00:00.000Z')`,
     );
     const ev = db.prepare(
       `INSERT INTO drill_events (id, drill_id, seq, step, sim_hour, person_id, actor, kind, payload)

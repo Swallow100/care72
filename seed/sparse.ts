@@ -1,7 +1,8 @@
 // T142 より前の種の台帳と連絡先（空きの多い形）。テストだけが使う。
 // T142 でデモ事業所の 10 人の台帳を埋めた（seed/people.ts）。空いた欄を埋める流れ（入れる欄・問い・紙から質問・面の編集）や、
 // 空欄の数・紙の未確認を試すテストは、この空きの多い形を使う（人・時計・同意は今の種と同じ。台帳と連絡先だけが前の形）。
-// 種のデータの決まり（全員架空・町名は架空・番地なし・電話は 090-0000-00NN）は seed/people.ts と同じ。
+// 種のデータの決まり（全員架空・番地なし・電話は 090-0000-00NN）は seed/people.ts と同じ。町名とピンは T142 より前の形の写しのまま
+// （架空の町名。T189 で seed/people.ts は実在の町名にしたが、この写しはテストだけが使うので変えていない）。
 
 import type { Ledger } from "../lib/db/types.ts";
 import { SEED_PEOPLE, type SeedContact, type SeedPerson } from "./people.ts";
@@ -16,12 +17,12 @@ const SPARSE: Record<string, { ledger: Ledger; contacts: SeedContact[] }> = {
     ],
   },
   "p-02": {
-    ledger: {basic: {sex: "female", address: {city: "松山市", town: "かわなぎ町"}, location: {lat: 33.8022, lng: 132.7665}, housing: {floor: 1, floors: 2, structure: "wood", type: "detached"}, household: "with_spouse", contactMeans: {landline: true, smartphone: "none"}}, care: {careLevel: "care3", walking: "hard", bedridden: true, dementia: false}, medical: {devices: [{kind: "ventilator", detail: "気管切開"}, {kind: "suction", schedule: "1 日 6 回"}], medications: []}, evacuation: {hazards: [{kind: "flood", depthM: 3}], destination1: "かわなぎ総合病院", transport: "訪問看護と夫", carryItems: ["吸引器", "予備の回路", "バッテリー"]}, notes: [], pending: []},
+    ledger: {basic: {sex: "female", address: {city: "松山市", town: "かわなぎ町"}, location: {lat: 33.8022, lng: 132.7665}, housing: {floor: 1, floors: 2, structure: "wood", type: "detached"}, household: "with_spouse", contactMeans: {landline: true, smartphone: "none"}}, care: {careLevel: "care3", walking: "hard", bedridden: true, dementia: false}, medical: {devices: [{kind: "ventilator", detail: "気管切開"}, {kind: "suction", schedule: "1 日 6 回"}], medications: []}, evacuation: {hazards: [{kind: "flood", depthM: 3}], destination1: "こはるび総合病院", transport: "訪問看護と夫", carryItems: ["吸引器", "予備の回路", "バッテリー"]}, notes: [], pending: []},
     contacts: [
       {relation: null, name: null, phone: "090-0000-0002", reach: null, emergency_order: null, supporter_order: null, night_ok: null, has_car: null, has_smartphone: null, note: "固定電話", id: "c-02-0", kind: "self"},
       {relation: "夫", name: "小林 健一", phone: "090-0000-0013", reach: "together", emergency_order: 1, supporter_order: 1, night_ok: 1, has_car: 1, has_smartphone: 1, note: null, id: "c-02-1", kind: "family"},
-      {relation: null, name: "かわなぎ訪問看護", phone: "090-0000-0014", reach: "in_city", emergency_order: 2, supporter_order: 2, night_ok: null, has_car: null, has_smartphone: null, note: null, id: "c-02-2", kind: "visiting_nurse"},
-      {relation: null, name: "かわなぎ医療機器", phone: "090-0000-0031", reach: "in_city", emergency_order: null, supporter_order: null, night_ok: 1, has_car: null, has_smartphone: null, note: "呼吸器の予備電池を届ける", id: "c-02-3", kind: "oxygen_supplier"},
+      {relation: null, name: "こはるび訪問看護", phone: "090-0000-0014", reach: "in_city", emergency_order: 2, supporter_order: 2, night_ok: null, has_car: null, has_smartphone: null, note: null, id: "c-02-2", kind: "visiting_nurse"},
+      {relation: null, name: "こはるび医療機器", phone: "090-0000-0031", reach: "in_city", emergency_order: null, supporter_order: null, night_ok: 1, has_car: null, has_smartphone: null, note: "呼吸器の予備電池を届ける", id: "c-02-3", kind: "oxygen_supplier"},
     ],
   },
   "p-03": {
@@ -31,8 +32,8 @@ const SPARSE: Record<string, { ledger: Ledger; contacts: SeedContact[] }> = {
       {relation: "妻", name: "田中 和子", phone: "090-0000-0015", reach: "together", emergency_order: 1, supporter_order: 1, night_ok: 1, has_car: 0, has_smartphone: 1, note: null, id: "c-03-1", kind: "family"},
       {relation: "長男", name: "田中 浩", phone: "090-0000-0016", reach: "in_city", emergency_order: 2, supporter_order: 2, night_ok: null, has_car: 1, has_smartphone: 1, note: null, id: "c-03-2", kind: "family"},
       {relation: "長女", name: "岡田 由美", phone: "090-0000-0017", reach: "out_of_pref", emergency_order: 3, supporter_order: null, night_ok: null, has_car: null, has_smartphone: 1, note: null, id: "c-03-3", kind: "family"},
-      {relation: null, name: "みずほし透析クリニック", phone: "090-0000-0018", reach: "in_city", emergency_order: null, supporter_order: null, night_ok: null, has_car: null, has_smartphone: null, note: "月水金の午前", id: "c-03-4", kind: "dialysis_center"},
-      {relation: null, name: "みずほし総合病院", phone: "090-0000-0032", reach: "in_city", emergency_order: null, supporter_order: null, night_ok: null, has_car: null, has_smartphone: null, note: "シャントの手術をした病院", id: "c-03-5", kind: "hospital"},
+      {relation: null, name: "あおたけ透析クリニック", phone: "090-0000-0018", reach: "in_city", emergency_order: null, supporter_order: null, night_ok: null, has_car: null, has_smartphone: null, note: "月水金の午前", id: "c-03-4", kind: "dialysis_center"},
+      {relation: null, name: "あおたけ総合病院", phone: "090-0000-0032", reach: "in_city", emergency_order: null, supporter_order: null, night_ok: null, has_car: null, has_smartphone: null, note: "シャントの手術をした病院", id: "c-03-5", kind: "hospital"},
     ],
   },
   "p-04": {

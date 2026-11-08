@@ -78,7 +78,7 @@ describe("実の地理（デモ事業所）", () => {
 
   it("台帳の町名でなくピンの位置で人に当たる（ピンを動かすと出来事の相手が変わる。町名は変えない）", () => {
     const moved = SOURCES.map((s) => (s.person.id === "p-01" ? { ...s.ledger, basic: { ...s.ledger.basic, location: { lat: 33.87, lng: 132.745 } } } : s.ledger));
-    expect(moved[0].basic.address?.town).toBe("かわなぎ町");
+    expect(moved[0].basic.address?.town).toBe("市坪西町");
     expect(townOfLedger(moved[0])).toBe("西長戸・鴨川付近");
     const ctx = ctxOf(DEMO_AREA, moved);
     const flood = (town: string) =>
@@ -99,7 +99,7 @@ describe("実の地理（デモ事業所）", () => {
 
   it("門: 区画の実の言葉も種の町名も別名になり、画面では実の言葉に戻る（種の町名に戻さない）", () => {
     const { key } = pseudonymize(SOURCES, { on: "2026-11-07", places: placesOf(DEMO_AREA, LEDGERS) });
-    const sent = pseudonymizeText("市坪・井門付近の道 通行止。かわなぎ町の家。みずほし町 停電", key).text;
+    const sent = pseudonymizeText("市坪・井門付近の道 通行止。市坪西町の家。久保田町 停電", key).text;
     expect(sent).toBe("甲地区の道 通行止。甲地区の家。乙地区 停電");
     expect(findLeaks(sent, key)).toEqual([]);
     expect(restoreText("甲地区で停電", key)).toBe("市坪・井門付近で停電");
@@ -134,20 +134,21 @@ describe("実の地理（デモ事業所）", () => {
     const ctx = ctxOf();
     const out = worldIncidents({ narration: "", events: [{ kind: "outage", town: "乙地区", target: "", name: "", value: "start" }], farewells: [] }, ctx);
     const change = out[0].change as Extract<(typeof out)[0]["change"], { kind: "outage" }>;
-    expect(change.area).toEqual({ scope: "towns", towns: ["みずほし町"], since: { みずほし町: 6 }, places: ["余戸・南斎院付近"] });
-    expect(inOutageArea(change.area, [], "みずほし町")).toBe(true);
-    expect(inOutageArea(change.area, [], "かわなぎ町")).toBe(false);
+    expect(change.area).toEqual({ scope: "towns", towns: ["久保田町", "北斎院町"], since: { 久保田町: 6, 北斎院町: 6 }, places: ["余戸・南斎院付近"] });
+    expect(inOutageArea(change.area, [], "久保田町")).toBe(true);
+    expect(inOutageArea(change.area, [], "北斎院町")).toBe(true);
+    expect(inOutageArea(change.area, [], "市坪西町")).toBe(false);
     let w = applyEvent(EMPTY_WORLD, out[0], 6);
     expect(worldNow(w).join()).toContain("停電中（乙地区）");
     const more = worldIncidents({ narration: "", events: [{ kind: "outage", town: "甲地区", target: "", name: "", value: "start" }], farewells: [] }, { ...ctx, hour: 9 });
     w = applyEvent(w, more[0], 9);
-    expect(w.outage?.area).toMatchObject({ towns: ["みずほし町", "かわなぎ町"], places: ["余戸・南斎院付近", "市坪・井門付近"], since: { みずほし町: 6, かわなぎ町: 9 } });
+    expect(w.outage?.area).toMatchObject({ towns: ["久保田町", "北斎院町", "市坪西町", "北井門五丁目"], places: ["余戸・南斎院付近", "市坪・井門付近"], since: { 久保田町: 6, 北斎院町: 6, 市坪西町: 9, 北井門五丁目: 9 } });
   });
 
   it("訓練する人の住む所: 種の町名で選び、言い方は別名と実の地形（固定の筋の訓練。T104）", () => {
-    expect(homeTowns("office-demo", [])).toContain("かわなぎ町");
-    expect(homeWords({ home: "かわなぎ町" }, DEMO_AREA)).toBe("甲地区（標高 14〜18 m。近くの川 石手川）");
-    expect(homeFacts({ home: "くぬぎ谷町" }, DEMO_AREA)).toEqual({ floodM: null, landslide: true });
+    expect(homeTowns("office-demo", [])).toContain("市坪西町");
+    expect(homeWords({ home: "市坪西町" }, DEMO_AREA)).toBe("甲地区（標高 14〜18 m。近くの川 石手川）");
+    expect(homeFacts({ home: "常光寺町" }, DEMO_AREA)).toEqual({ floodM: null, landslide: true });
   });
 });
 

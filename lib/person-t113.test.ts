@@ -112,7 +112,7 @@ describe("関係者の面（T113）", () => {
     expect(lines[0]).toMatch(/^森 恵子 娘 家族 緊急 1 支援 1/);
     for (const l of lines) expect(l).not.toMatch(/本人|かかりつけ|薬局|透析施設/);
     const p03 = toPersonView(seedRows(seed("p-03")), { today: TODAY });
-    expect(JSON.stringify(section(p03, "people"))).not.toContain("みずほし透析クリニック");
+    expect(JSON.stringify(section(p03, "people"))).not.toContain("あおたけ透析クリニック");
   });
 
   it("埋まった役割に未確認が付いたら、その役割の名前の行に出す（「その他」にしない）", () => {

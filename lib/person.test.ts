@@ -192,8 +192,8 @@ describe("本人のページ（種の 10 人）", () => {
       tone: "check",
       depends: { on: "透析先", check: "未確認", unchecked: true },
     });
-    expect(textOf(v, "medical")).toContain("みずほし透析クリニック");
-    expect(textOf(v, "people")).not.toContain("みずほし透析クリニック");
+    expect(textOf(v, "medical")).toContain("あおたけ透析クリニック");
+    expect(textOf(v, "people")).not.toContain("あおたけ透析クリニック");
     expect(textOf(v, "people")).toContain("岡田 由美");
   });
 

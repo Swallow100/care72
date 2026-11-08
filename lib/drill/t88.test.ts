@@ -59,7 +59,7 @@ const SOURCES = new Map<string, PseudonymInput>(
 );
 const ALL = SEED_PEOPLE.map((p) => p.person.id);
 
-/** 町名と町名の頭（「かわなぎ町」と「かわなぎ」）。種の台帳の町名と、デモの区画の実の言葉（T170） */
+/** 町名と町名の頭（「市坪西町」と「市坪西」）。種の台帳の町名と、デモの区画の実の言葉（T170） */
 const TOWN_WORDS = [...new Set(DEMO_AREA.towns.flatMap((t) => [t.town, ...(t.homes ?? [])]).flatMap((t) => [t, t.replace(/(町|台|村)$/u, "")]))];
 const townsIn = (text: string) => TOWN_WORDS.filter((w) => text.includes(w));
 const sent = (p: Params) => JSON.stringify({ system: p.system, messages: p.messages });
@@ -89,7 +89,7 @@ const QUIET = {
   speech: "",
 };
 
-/** 世界: 毎刻み、甲地区（かわなぎ町）の停電と増水の 1 文 */
+/** 世界: 毎刻み、甲地区（市坪西町）の停電と増水の 1 文 */
 const STEP: WorldStep = {
   narration: "甲地区で重信川が増水している",
   events: [
@@ -162,8 +162,8 @@ async function runVirtual(hooks: NonNullable<ReturnType<typeof drillHooks>>, id:
 
 /** 町名の入った出来事（画面の文。世界の別名を町名に戻した物） */
 const TOWN_INCIDENTS: DrillIncident[] = [
-  { change: { kind: "narration", room: "甲地区で重信川が増水している" }, text: "かわなぎ町で重信川が増水している", actor: "world", at: 6, ai: true },
-  { change: { kind: "outage", area: { scope: "towns", towns: ["みずほし町"], since: { みずほし町: 6 } } }, text: "みずほし町 停電", actor: "world", at: 6, ai: true },
+  { change: { kind: "narration", room: "甲地区で重信川が増水している" }, text: "市坪西町で重信川が増水している", actor: "world", at: 6, ai: true },
+  { change: { kind: "outage", area: { scope: "towns", towns: ["久保田町"], since: { 久保田町: 6 } } }, text: "久保田町 停電", actor: "world", at: 6, ai: true },
 ] as DrillIncident[];
 
 describe("訓練の入力に町名を渡さない（T88）", () => {
@@ -181,7 +181,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     expect(persona.length).toBeGreaterThan(10 * 6);
     for (const c of persona) expect(townsIn(sent(c))).toEqual([]);
     for (const text of room.texts) expect(townsIn(text)).toEqual([]);
-    // 世界の出来事（画面では「市坪・井門付近 停電」）は、本人役には別名で届く。かわなぎ町の本人（p-01）にも別名で
+    // 世界の出来事（画面では「市坪・井門付近 停電」）は、本人役には別名で届く。市坪西町の本人（p-01）にも別名で
     const p01 = persona.filter((c) => sent(c).includes("A さん") && sent(c).includes("在宅酸素"));
     expect(persona.some((c) => sent(c).includes("甲地区"))).toBe(true);
     expect(persona.some((c) => sent(c).includes("（町名）"))).toBe(false);
@@ -217,7 +217,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     const { client, calls } = fakeClaude((p) =>
       p.model === HAIKU && sent(p).includes("speech") && !sent(p).includes("pressesRed") ? { speech: "甲地区は水が来てる" } : { ...QUIET, speech: "甲地区は停電してる" },
     );
-    const world: WorldState = { ...EMPTY_WORLD, roads: [{ id: "town-乙地区", label: "みずほし町の道", open: false, person: null }] } as WorldState;
+    const world: WorldState = { ...EMPTY_WORLD, roads: [{ id: "town-乙地区", label: "久保田町の道", open: false, person: null }] } as WorldState;
     const hook = createPersonaHook({ load: async () => SOURCES, ai: aiCtx(client), on: ON });
     await hook({ step: 1, hour: 6, person: "p-01", world, incidents: TOWN_INCIDENTS, state: null, lastAction: null, fixed: [], virtual: true });
     expect(calls).toHaveLength(1);
@@ -242,7 +242,7 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
     // 本人役の説明（台帳の特記・避難先）に本人の町名があっても別名で渡る
     const p01 = SOURCES.get("p-01")!;
     const persona = buildPersona(
-      { ...p01, ledger: { ...p01.ledger, notes: ["かわなぎ町の川沿いに住む"] } },
+      { ...p01, ledger: { ...p01.ledger, notes: ["市坪西町の川沿いに住む"] } },
       { on: ON, places: officePlaces(DEMO.id, [...SOURCES.values()].map((s) => s.ledger)) },
     );
     expect(persona.profile.text).toContain("甲地区の川沿いに住む");
@@ -262,12 +262,12 @@ describe("訓練の入力に町名を渡さない（T88）", () => {
       participants: ALL,
       people: {},
       actions: [],
-      replies: [{ id: "a1", action: "visit", person: "p-01", callee: null, status: "blocked", because: "road", text: "かわなぎ町の道としおかぜ町の橋が通れず着けなかった" }],
+      replies: [{ id: "a1", action: "visit", person: "p-01", callee: null, status: "blocked", because: "road", text: "市坪西町の道と大可賀三丁目の橋が通れず着けなかった" }],
     } as DirectorInput;
     await hook(input);
     expect(calls).toHaveLength(1);
     expect(townsIn(sent(calls[0]))).toEqual([]);
-    // 参加者の町（かわなぎ町）も（町名）でなく別名、種の表の町（しおかぜ町）も別名
+    // 参加者の町（市坪西町）も（町名）でなく別名、種の表の町（大可賀三丁目）も別名
     expect(sent(calls[0])).toContain("甲地区の道と戊地区の橋");
   });
 });

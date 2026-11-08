@@ -155,7 +155,7 @@ describe("本人役の説明", () => {
     // 見張りが効くこと（家族の名前・電話・カナ・町名を見つける）
     expect(findLeaks("森 恵子さんに 090-0000-0011", ALL_KEY).length).toBeGreaterThan(0);
     expect(findLeaks("ヤマダ", ALL_KEY).length).toBeGreaterThan(0);
-    expect(() => expectNoPersonalData("くぬぎ谷のあたり")).toThrow();
+    expect(() => expectNoPersonalData("祝谷東のあたり")).toThrow();
     for (const p of SEED_PEOPLE) {
       const persona = buildPersona(seedInput(p), { on: "2026-11-05" });
       expectNoPersonalData(persona.profile.text);

@@ -287,12 +287,12 @@ describe("分ける本体（classify）", () => {
 
   it("送る物は伏せた文字起こしと答えだけ。氏名・町名・電話・台帳を渡さない", async () => {
     const { client, calls } = fake(says(["immobile"], 0.9, "（町名）の家で"));
-    const text = "娘の森 恵子さんに 090-0000-0011 で電話して。かわなぎ町の家で うごけない";
+    const text = "娘の森 恵子さんに 090-0000-0011 で電話して。市坪西町の家で うごけない";
     const r = await classify(seal(text, { ...NO_ANSWERS, canMove: false }), aiCtx(client));
     expect(r).toMatchObject({ ok: true, value: { categories: ["immobile"], quote: "（町名）の家で" } });
 
     const sent = JSON.stringify(calls[0].messages);
-    for (const secret of ["森", "恵子", "山田", "ハナ", "かわなぎ", "090-0000-0011", "0900000011", "1942-04-18", "木村", "ワーファリン"]) {
+    for (const secret of ["森", "恵子", "山田", "ハナ", "市坪西", "090-0000-0011", "0900000011", "1942-04-18", "木村", "ワーファリン"]) {
       expect(sent, secret).not.toContain(secret);
     }
     expect(sent).toContain("娘");

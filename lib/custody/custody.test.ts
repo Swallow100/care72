@@ -153,7 +153,7 @@ describe("役の壁", () => {
     expect(await personInScope(db, medical2(), "p-01")).toBeNull();
     expect(await personInScope(db, medical(), "p-02")).toBeNull();
     if (!r.ok) return;
-    expect((await release(db, actor(), { custodyId: r.custodyId, kind: "transported", note: "かわなぎ総合病院" }, LATER)).ok).toBe(true);
+    expect((await release(db, actor(), { custodyId: r.custodyId, kind: "transported", note: "こはるび総合病院" }, LATER)).ok).toBe(true);
     expect(await personInScope(db, medical(), "p-01")).toBeNull();
   });
 
@@ -447,11 +447,11 @@ describe("受け持ちの一覧", () => {
   it("搬送で一覧から外れ、経過に「搬送 行き先」、提供の記録を閉じる。閉じた行はもう閉じない", async () => {
     const r = await receive(db, actor(), { personId: "p-01", shelter: SHELTER, via: "search" }, AT);
     if (!r.ok) throw new Error(r.error);
-    const out = await releaseRequest(db, medical(), { custodyId: r.custodyId, kind: "transported", note: "かわなぎ総合病院" }, LATER);
+    const out = await releaseRequest(db, medical(), { custodyId: r.custodyId, kind: "transported", note: "こはるび総合病院" }, LATER);
     expect(out.status).toBe(200);
     expect((await loadStaffBoard(db, actor(), TODAY, NOW)).rows).toEqual([]);
     const tl = sqlite.prepare("SELECT kind, body, author_role FROM timeline_entries WHERE person_id = 'p-01' AND occurred_at = ?").get(LATER);
-    expect(tl).toMatchObject({ kind: "transported", body: "かわなぎ総合病院", author_role: "medical" });
+    expect(tl).toMatchObject({ kind: "transported", body: "こはるび総合病院", author_role: "medical" });
     expect(sqlite.prepare("SELECT closed_at FROM third_party_provisions").get()).toEqual({ closed_at: LATER });
     expect(sqlite.prepare("SELECT release_kind, released_by FROM custody").get()).toEqual({ release_kind: "transported", released_by: "acct-judge" });
     expect((await releaseRequest(db, medical(), { custodyId: r.custodyId, kind: "discharged" }, NOW)).body.error).toBe("released");

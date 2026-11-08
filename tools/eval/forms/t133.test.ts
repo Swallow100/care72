@@ -63,7 +63,7 @@ describe("紙の見た目の数（T133）", () => {
 
   it("伏字の跡・仮の言い方の形", () => {
     for (const s of ["（氏名）", "(町名)", "（電話）", "（生年月日）", "（市内）", "(近所)"]) expect(MASK_WORDS.test(s), s).toBe(true);
-    for (const s of ["かわなぎ町", "（連絡順 1・車あり）", "市内の病院"]) expect(MASK_WORDS.test(s), s).toBe(false);
+    for (const s of ["市坪西町", "（連絡順 1・車あり）", "市内の病院"]) expect(MASK_WORDS.test(s), s).toBe(false);
   });
 
   it("住所の無い連絡先の住所の欄に「（市内）」を刷らない（伏字・仮の言い方 0）", () => {

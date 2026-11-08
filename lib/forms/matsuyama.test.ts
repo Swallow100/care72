@@ -240,7 +240,7 @@ describe("種の 10 人から欄が埋まる", () => {
     const tanaka = sheetOf("p-03");
     expect(text(tanaka, "notes.medical")).toContain("透析 次の回まで 2 日");
     expect(text(tanaka, "notes.medical")).toContain("透析先 未確認");
-    expect(text(tanaka, "notes.medical")).toContain("みずほし透析クリニック");
+    expect(text(tanaka, "notes.medical")).toContain("あおたけ透析クリニック");
     expect(text(tanaka, "notes.other")).toContain("岡田 由美");
     expect(text(tanaka, "notes.other")).toContain("緊急連絡 3");
 

@@ -342,7 +342,8 @@ describe("停電の開始時刻がルールの表の入力に渡る", () => {
   it("事業所の町名と人数（地区を選ぶ欄）", async () => {
     const towns = await loadOfficeTowns(db, "office-demo");
     expect(towns.reduce((n, t) => n + t.count, 0)).toBe(10);
-    expect(towns.find((t) => t.town === "かわなぎ町")?.count).toBe(2);
+    expect(towns.find((t) => t.town === "市坪西町")?.count).toBe(1);
+    expect(towns).toHaveLength(10);
   });
 
   it("ヘッダーの印: 平時は「平時」、大雨は「レベル 4」「停電 3 時間」", async () => {

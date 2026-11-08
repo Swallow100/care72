@@ -93,25 +93,25 @@ describe("絞込", () => {
     for (const r of reds) expect(r.rank).toBe(rank.get(r.id));
     expect(reds.map((r) => r.id)).toEqual(rows.filter((r) => r.triage!.color === "red").map((r) => r.id));
 
-    expect(filterCaseload(rows, { ...NO_FILTER, area: "かわなぎ町" }).map((r) => r.id).sort()).toEqual(["p-01", "p-02"]);
+    expect(filterCaseload(rows, { ...NO_FILTER, area: "市坪西町" }).map((r) => r.id).sort()).toEqual(["p-01"]);
     expect(filterCaseload(rows, { ...NO_FILTER, mark: "oxygen" }).map((r) => r.id)).toEqual(["p-01"]);
     expect(filterCaseload(rows, { ...NO_FILTER, q: "やまだ　はな" }).map((r) => r.id)).toEqual(["p-01"]);
     expect(filterCaseload(rows, { ...NO_FILTER, q: "ﾔﾏﾀﾞ" }).map((r) => r.id)).toEqual(["p-01"]);
     expect(filterCaseload(rows, { ...NO_FILTER, q: "山田" }).map((r) => r.id)).toEqual(["p-01"]);
-    expect(filterCaseload(rows, { ...NO_FILTER, area: "かわなぎ町", mark: "dialysis" })).toEqual([]);
+    expect(filterCaseload(rows, { ...NO_FILTER, area: "市坪西町", mark: "dialysis" })).toEqual([]);
     expect(filterCaseload(rows, NO_FILTER)).toEqual(rows);
   });
 
   it("平時の行は色を持たないので、色で絞ると誰も残らない（画面は平時に色を渡さない）", () => {
     expect(filterCaseload(normal(), { ...NO_FILTER, color: "green" })).toEqual([]);
-    expect(filterCaseload(normal(), { ...NO_FILTER, area: "そらみ台" }).map((r) => r.id).sort()).toEqual(["p-09", "p-10"]);
+    expect(filterCaseload(normal(), { ...NO_FILTER, area: "西長戸町" }).map((r) => r.id).sort()).toEqual(["p-09"]);
   });
 
   it("選ぶ所の中身: 地区は町名のカナ順で重ねない、医療は骨格の順でいる区分だけ", () => {
     const o = filterOptions(board(3));
     expect(o.areas).toEqual([...new Set(o.areas)]);
-    expect(o.areas).toContain("かわなぎ町");
-    expect(o.areas).toHaveLength(6);
+    expect(o.areas).toContain("市坪西町");
+    expect(o.areas).toHaveLength(10);
     expect(o.marks.map(([c]) => c).slice(0, 3)).toEqual(["ventilator", "oxygen", "dialysis"]);
     expect(o.marks.map(([c]) => c)).not.toContain("suction");
   });

@@ -10,7 +10,7 @@ import { canonicalMarks, hasAnyMark, hasBrokenMark, hasMaskMark, inputTexts, mar
 const P01: SeedPerson = withTownShelter(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
 function withTownShelter(p: SeedPerson): SeedPerson {
   const { destination1Location: _, ...evacuation } = p.ledger.evacuation;
-  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "かわなぎ小学校" } } };
+  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "市坪西小学校" } } };
 }
 const input: PseudonymInput = {
   person: P01.person,
@@ -68,13 +68,13 @@ describe("崩れた伏せ字の形（T122）", () => {
 
 describe("崩れた伏せ字を元の文から戻す（sourceRestorer、T122）", () => {
   const { key } = pseudonymize([input], { on: "2026-11-05" });
-  const text = "第二避難先は かわなぎ総合病院 です。";
+  const text = "第二避難先は 市坪西総合病院 です。";
 
   it("ケアマネの文の町名を崩した形で写した値は、元の言葉に戻る", () => {
     const restore = sourceRestorer([text, ...inputTexts(input)], key);
-    for (const f of TOWN_FORMS) expect(restore(`${f}総合病院`), f).toBe("かわなぎ総合病院");
-    // 台帳の避難先（かわなぎ小学校）も
-    expect(restore("(町名)小学校")).toBe("かわなぎ小学校");
+    for (const f of TOWN_FORMS) expect(restore(`${f}総合病院`), f).toBe("市坪西総合病院");
+    // 台帳の避難先（市坪西小学校）も
+    expect(restore("(町名)小学校")).toBe("市坪西小学校");
   });
 
   it("戻せない崩れた形は全角の括弧の形で返る（伏せ字の検査が捕まえる）", () => {
@@ -96,6 +96,6 @@ describe("崩れた伏せ字を元の文から戻す（sourceRestorer、T122）"
     const reply = "(町名)公民館";
     const restore = sourceRestorer(inputTexts(input), key, { replies: [reply] });
     expect(hasMaskMark(restore(reply))).toBe(true);
-    expect(restore("(町名)小学校")).toBe("かわなぎ小学校");
+    expect(restore("(町名)小学校")).toBe("市坪西小学校");
   });
 });
