@@ -245,7 +245,7 @@ async function disaster(browser) {
   r11.pause();
   r12.pause();
 
-  // ケアマネ: 事業所の画面で大雨に切り替え、警戒レベル 4・停電 地区 かわなぎ町
+  // ケアマネ: 事業所の画面で大雨に切り替え、警戒レベル 4・停電 地区 市坪西町・北井門五丁目
   await open(cm, base, "/office");
   await r10.start();
   await sleep(2000);
@@ -263,8 +263,10 @@ async function disaster(browser) {
     const pick = (sel) => document.querySelector(sel)?.click();
     pick('input[name="level"][value="4"]');
     pick('input[name="outage"][value="area"]');
-    const town = Array.from(document.querySelectorAll('input[name="town"]')).find((x) => x.value === "かわなぎ町");
-    if (town && !town.checked) town.click();
+    // 浸水 3 m の 2 人（山田・小林）の町（T189 で実在の町名。前の架空の町は 1 つだった）
+    for (const town of Array.from(document.querySelectorAll('input[name="town"]')).filter((x) => ["市坪西町", "北井門五丁目"].includes(x.value))) {
+      if (!town.checked) town.click();
+    }
     // 停電開始は地区のときに要る。今の時刻（手元の時計）を入れる
     const at = document.querySelector('input[name="outage_at"]');
     if (at) {
@@ -1109,7 +1111,7 @@ async function aiFinish(browser) {
   if (review) writeFileSync(join(recDir("R09"), "score.txt"), review.replace(/\r\n/g, "\n") + "\n");
 }
 
-/** 平時 → 大雨（警戒レベル 4・停電 地区 かわなぎ町）。撮らない（disaster の R10 の頭と同じ操作） */
+/** 平時 → 大雨（警戒レベル 4・停電 地区 市坪西町・北井門五丁目）。撮らない（disaster の R10 の頭と同じ操作） */
 async function toHeavyRain(cm) {
   await open(cm, base, "/office");
   await clickText(cm, KIND_LABEL, { exact: true, within: "main" });
@@ -1120,8 +1122,10 @@ async function toHeavyRain(cm) {
     const pick = (sel) => document.querySelector(sel)?.click();
     pick('input[name="level"][value="4"]');
     pick('input[name="outage"][value="area"]');
-    const town = Array.from(document.querySelectorAll('input[name="town"]')).find((x) => x.value === "かわなぎ町");
-    if (town && !town.checked) town.click();
+    // 浸水 3 m の 2 人（山田・小林）の町（T189 で実在の町名。前の架空の町は 1 つだった）
+    for (const town of Array.from(document.querySelectorAll('input[name="town"]')).filter((x) => ["市坪西町", "北井門五丁目"].includes(x.value))) {
+      if (!town.checked) town.click();
+    }
     const at = document.querySelector('input[name="outage_at"]');
     if (at) {
       const d = new Date();
@@ -1131,7 +1135,7 @@ async function toHeavyRain(cm) {
   });
   await Promise.all([cm.waitForNavigation({ waitUntil: "networkidle0", timeout: 120_000 }), clickText(cm, "保存", { exact: true, within: 'form[action="/office/info"]' })]);
   await settle(cm);
-  console.log(`${KIND_LABEL}にした（停電 かわなぎ町。警戒レベル 4 は大雨のときだけ）`);
+  console.log(`${KIND_LABEL}にした（停電 市坪西町・北井門五丁目。警戒レベル 4 は大雨のときだけ）`);
 }
 
 /** 本人のページの「スマホ入口」のリンク（/s/<token>）。無ければ発行する。返すのは道だけ（手元の dev で開く） */

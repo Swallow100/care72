@@ -1,6 +1,6 @@
 // T118（docs/tasks/T118.md）の入れる欄の側: 伏せた物は全部戻し、戻せない伏せ字は出さず保存しない。和暦の生年月日は送らずに元の書き方に戻す。
 // 入力の形は評価の台（T107、tools/eval/forms）が使った物を写した:
-// - 写真・PDF の道: 台帳の避難先が空の人の書類から Claude が「かわなぎ小学校」を読む（仮名化と同じ置き換えで（町名）小学校になり、前は戻らなかった）
+// - 写真・PDF の道: 台帳の避難先が空の人の書類から Claude が「市坪西小学校」を読む（仮名化と同じ置き換えで（町名）小学校になり、前は戻らなかった）
 // - 写真・PDF の道: 台帳の避難先（仮名化して渡した「（町名）小学校」）を Claude がそのまま写す
 // - 文の道: 書き起こしの頭の行に和暦の生年月日（「昭和17年4月18日生まれで」）
 // 本物の API は呼ばない（偽の Claude）。人は種の架空の 10 人だけ。
@@ -31,7 +31,7 @@ const TODAY = "2026-11-05";
 const P01: SeedPerson = withTownShelter(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
 function withTownShelter(p: SeedPerson): SeedPerson {
   const { destination1Location: _, ...evacuation } = p.ledger.evacuation;
-  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "かわなぎ小学校" } } };
+  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "市坪西小学校" } } };
 }
 
 function rowsOf(p: SeedPerson, ledger = p.ledger): PersonPageRows {
@@ -87,15 +87,15 @@ function photo() {
 }
 
 describe("写真・PDF の道でも伏せた物を全部戻す（T118）", () => {
-  it("T107 の形: 台帳の避難先が空の人の書類から読んだ「かわなぎ小学校」は、伏せ直したあと元の町名に戻る（伏せ字の印なし）", async () => {
+  it("T107 の形: 台帳の避難先が空の人の書類から読んだ「市坪西小学校」は、伏せ直したあと元の町名に戻る（伏せ字の印なし）", async () => {
     const ledger = structuredClone(P01.ledger);
     delete ledger.evacuation.destination1;
     delete ledger.evacuation.destination2;
-    const out: ExtractOutput = { ...EMPTY_OUT, items: [{ field: "evacuation.destination1", value: "かわなぎ小学校" }] };
+    const out: ExtractOutput = { ...EMPTY_OUT, items: [{ field: "evacuation.destination1", value: "市坪西小学校" }] };
     const { client } = fakeClaude(out, OPUS);
     const p = await readIntake(rowsOf(P01, ledger), photo(), aiCtx(client), { today: TODAY });
     const d1 = p.items.find((x) => x.id === "field-evacuation.destination1")!;
-    expect(d1).toMatchObject({ next: "かわなぎ小学校", state: "add", masked: false, change: { t: "field", value: "かわなぎ小学校" } });
+    expect(d1).toMatchObject({ next: "市坪西小学校", state: "add", masked: false, change: { t: "field", value: "市坪西小学校" } });
     expect(p.dropped).toBe(0);
   });
 
@@ -105,7 +105,7 @@ describe("写真・PDF の道でも伏せた物を全部戻す（T118）", () =>
     const p = await readIntake(rowsOf(P01), photo(), aiCtx(client), { today: TODAY });
     expect(JSON.stringify(calls[0].messages)).toContain("（町名）小学校");
     const d1 = p.items.find((x) => x.id === "field-evacuation.destination1")!;
-    expect(d1).toMatchObject({ current: "かわなぎ小学校", next: "かわなぎ小学校", state: "same", change: null, masked: false });
+    expect(d1).toMatchObject({ current: "市坪西小学校", next: "市坪西小学校", state: "same", change: null, masked: false });
   });
 
   it("戻せない伏せ字（Claude が書類の塗った所を（町名）（氏名）と書いた物）が残る値は出さず、捨てた数に", async () => {
@@ -168,7 +168,7 @@ describe("保存の検査: Claude の分け方の保存に伏せ字を残さな�
     for (const c of masked) {
       expect(SaveRequestSchema.safeParse({ ...base, ai: { model: SONNET }, changes: [c] }).success, JSON.stringify(c)).toBe(false);
     }
-    expect(SaveRequestSchema.safeParse({ ...base, ai: { model: SONNET }, changes: [{ t: "field", key: "evacuation.destination1", value: "かわなぎ小学校" }] }).success).toBe(true);
+    expect(SaveRequestSchema.safeParse({ ...base, ai: { model: SONNET }, changes: [{ t: "field", key: "evacuation.destination1", value: "市坪西小学校" }] }).success).toBe(true);
     expect(SaveRequestSchema.safeParse({ ...base, ai: null, edit: true, changes: [{ t: "note", value: "（町名）小学校" }] }).success).toBe(true);
   });
 });

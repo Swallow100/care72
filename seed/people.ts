@@ -1,5 +1,6 @@
 // デモ事業所の種のデータ。docs/SPEC.md の「架空の 10 人（骨子、11/2）」から起こした。
-// 全員架空で、実在の人・事業所と関係ない。町名は架空、番地は付けない。電話は 090-0000-00NN で、かけない。
+// 人・家は全員架空で、実在の人・事業所と関係ない。町名は実在（松山市の町名。家のピンの位置を地理院の逆ジオコーダで引いた物、T189）、番地は持たない。電話は 090-0000-00NN で、かけない。
+// 最寄りの避難場所（nearest）も、家のピンの近くの実在の指定避難所の名前（国土地理院のデータ。名前だけ、T189。SEED_NEAREST）。
 // 避難先 1・2 のうち施設の物は、家のピンの近くの実在の指定避難所（国土地理院のデータ。名前と位置だけ、T183。SEED_DESTINATIONS）。
 // 11 人目（台帳に無い人）は医療班がその場で作る筋なので、ここには入れない。
 
@@ -53,10 +54,10 @@ export type SeedPerson = {
 // 様式（plan_form）は 3 つとも松山市（種は松山市。lib/forms/plan-form.ts の defaultPlanForm と同じ。種に書くので、審査員が
 // /office で様式を変えても毎朝の戻しで松山市に戻る。T68）。地図の中心（T68、migration 0017）はデモ事業所だけ松山市の市街
 // （lib/map/center.ts の DEFAULT_CENTER と同じ値）。協力事業所・所属なしは未設定（null）
-/** デモ事業所と確認用の事業所の事業所の情報と地域（T148。架空の値） */
+/** デモ事業所と確認用の事業所の事業所の情報と地域（T148。所在地は地図の中心の実在の町名まで〔T189〕、ほかは架空の値） */
 function demoProfile(): Pick<SeedOffice, SeedOfficeProfileKey> {
   return {
-    address: `愛媛県${CITY}みずほし町`,
+    address: `愛媛県${CITY}二番町四丁目`,
     phone: phone(90),
     fax: null,
     office_number: null,
@@ -71,7 +72,7 @@ function demoProfile(): Pick<SeedOffice, SeedOfficeProfileKey> {
 export const SEED_OFFICES: SeedOffice[] = [
   // ハザード（offices.hazards、T125）は持たない（NULL = 区域なし。架空の街の高台で、訓練の区域の出来事は事業所に効かない）。
   // 種の行に列を足すと migration 0030 の前の D1 に種を入れられなくなる
-  // 事業所の情報と地域（T148）は架空の値: 所在地は架空の町名（番地なし）、電話は 090-0000-00NN の形、周りの市は 1 つ、広さは自動。
+  // 事業所の情報と地域（T148）は架空の値: 所在地は地図の中心（33.84, 132.765）の実在の町名まで（番地なし。T189）、電話は 090-0000-00NN の形、周りの市は 1 つ、広さは自動。
   // 事業所番号・FAX は持たない（本物の番号と重ならないように）。確認用の事業所（T144）も同じ値（デモ事業所と同じ種の事業所なので）
   { id: "office-demo", name: "デモ事業所", kind: "demo", city: CITY, plan_form: "matsuyama", center_lat: 33.84, center_lng: 132.765, ...demoProfile() },
   // 確認用の事業所（T144）。見本のケアマネ（山本）のログインが入る、デモ事業所と同じ種の事業所（中の 10 人・災害モード・訓練は
@@ -202,7 +203,7 @@ function contact(c: Partial<SeedContact> & Pick<SeedContact, "id" | "kind">): Se
   };
 }
 
-/** 連絡先の住所（市町村と町名まで。番地は持たない。町名は架空、県外・遠方の市区も架空） */
+/** 連絡先の住所（市町村と町名まで。番地は持たない。市内の町名は実在で本人の家の町か近くの本人の町〔T189〕、県外・遠方の市区は架空） */
 const inCity = (town: string) => `${CITY} ${town}`;
 
 /** 時計の既定。値のある時計は確かめ済みにしておく。外の物に頼らない（頼り先なし） */
@@ -223,7 +224,7 @@ function clock(c: Partial<SeedClock> & Pick<SeedClock, "id" | "kind" | "category
 const emptyMedical = (): Ledger["medical"] => ({ devices: [], medications: [] });
 
 /**
- * 地図のピンの位置（T14）。架空の位置で、町名と同じく実在の人・家と関係ない。
+ * 地図のピンの位置（T14）。架空の位置で、実在の人・家と関係ない（町名はこの位置を地理院の逆ジオコーダで引いた実在の町名。T189）。
  * 松山市の市街の中で、台帳のハザードと重ねる層（想定最大規模）が食い違わない所（浸水 3 m は 3〜5 m の区域、浸水 0.5〜1 m は
  * 0.5〜3 m の区域、土砂は警戒区域の山すそ、津波は海沿いの浸水想定で洪水の区域の外、なしはどの層も無い所）を選んだ。
  * 家に当たらないよう、空中写真で田畑・空き地・運動場・公園などの開けた所を見て置いた。確かめた手順は docs/progress/t14.md。
@@ -231,16 +232,16 @@ const emptyMedical = (): Ledger["medical"] => ({ devices: [], medications: [] })
  * 同じ区画の中の層の合う開けた所へ動かした（重ねるハザードマップの画素と空中写真で確かめた。docs/progress/t183.md）
  */
 export const SEED_LOCATIONS: Record<string, GeoPoint> = {
-  "p-01": { lat: 33.812, lng: 132.7487 }, // かわなぎ町 浸水 3 m
-  "p-02": { lat: 33.8027, lng: 132.7704 }, // かわなぎ町 浸水 3 m
-  "p-03": { lat: 33.8226, lng: 132.7197 }, // みずほし町 浸水 0.5 m
-  "p-04": { lat: 33.8525, lng: 132.7988 }, // くぬぎ谷町 土砂
-  "p-05": { lat: 33.8346, lng: 132.7303 }, // みずほし町 浸水 0.5 m
-  "p-06": { lat: 33.8243, lng: 132.7543 }, // あしなみ町 浸水 1 m
-  "p-07": { lat: 33.8585, lng: 132.7816 }, // くぬぎ谷町 土砂
-  "p-08": { lat: 33.8535, lng: 132.7094 }, // うみなり町 津波
-  "p-09": { lat: 33.8652, lng: 132.7379 }, // そらみ台 なし
-  "p-10": { lat: 33.8735, lng: 132.7502 }, // そらみ台 なし
+  "p-01": { lat: 33.812, lng: 132.7487 }, // 市坪西町 浸水 3 m
+  "p-02": { lat: 33.8027, lng: 132.7704 }, // 北井門五丁目 浸水 3 m
+  "p-03": { lat: 33.8226, lng: 132.7197 }, // 久保田町 浸水 0.5 m
+  "p-04": { lat: 33.8525, lng: 132.7988 }, // 常光寺町 土砂
+  "p-05": { lat: 33.8346, lng: 132.7303 }, // 北斎院町 浸水 0.5 m
+  "p-06": { lat: 33.8243, lng: 132.7543 }, // 土居田町 浸水 1 m
+  "p-07": { lat: 33.8585, lng: 132.7816 }, // 祝谷東町 土砂
+  "p-08": { lat: 33.8535, lng: 132.7094 }, // 大可賀三丁目 津波
+  "p-09": { lat: 33.8652, lng: 132.7379 }, // 西長戸町 なし
+  "p-10": { lat: 33.8735, lng: 132.7502 }, // 鴨川二丁目 なし
 };
 
 /**
@@ -265,6 +266,25 @@ export const SEED_DESTINATIONS = {
   shiomiHall: { name: "潮見公民館", at: { lat: 33.87253, lng: 132.75457 } },
 } as const satisfies Record<string, { name: string; at: GeoPoint }>;
 
+/**
+ * 種の最寄りの避難場所（evacuation.nearest。名前だけで、台帳に位置は持たない。T189）。国土地理院「指定緊急避難場所・指定避難所データ」の
+ * 指定避難所（sih）のうち、家のピンに近い物の名前のまま（at は確かめた位置で、台帳には入れない）。名前は仮名化の門で字が変わらない物
+ * （担当の人・家族・支援者の姓名と種の町名を含まない）で、本人の 1 枚の行が 1 行に収まる長さ。訓練の世界の実の避難所と重なる物は
+ * 近い順で次の物にした（p-06・p-08）。ハザードの層とは照らしていない（docs/progress/t189.md）
+ */
+export const SEED_NEAREST = {
+  "p-01": { name: "余土中学校", at: { lat: 33.81395, lng: 132.74123 } },
+  "p-02": { name: "南中学校", at: { lat: 33.80794, lng: 132.7754 } },
+  "p-03": { name: "西中学校", at: { lat: 33.8264, lng: 132.71729 } },
+  "p-04": { name: "湯山公民館倉敷分館", at: { lat: 33.84913, lng: 132.80205 } },
+  "p-05": { name: "津田中学校", at: { lat: 33.83703, lng: 132.72215 } },
+  "p-06": { name: "雄郡公民館", at: { lat: 33.82798, lng: 132.7594 } },
+  "p-07": { name: "道後公民館祝谷分館", at: { lat: 33.85842, lng: 132.7785 } },
+  "p-08": { name: "三津浜中学校", at: { lat: 33.85624, lng: 132.7182 } },
+  "p-09": { name: "みどり小学校", at: { lat: 33.86621, lng: 132.73934 } },
+  "p-10": { name: "鴨川中学校", at: { lat: 33.87346, lng: 132.75019 } },
+} as const satisfies Record<string, { name: string; at: GeoPoint }>;
+
 export const SEED_PEOPLE: SeedPerson[] = [
   // 1 動画の主役。計画のデモで空欄を埋める。大雨: 赤 → 録音にうめき声。地震: 停電で酸素の時計が走る
   {
@@ -282,7 +302,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "female",
-        address: { city: CITY, town: "かわなぎ町" },
+        address: { city: CITY, town: "市坪西町" },
         location: SEED_LOCATIONS["p-01"],
         housing: { floor: 1, floors: 2, structure: "wood", builtYear: 1972, bedroom: "1 階 奥の和室", type: "detached" },
         household: "alone",
@@ -320,7 +340,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         route: "家から東へ市道を進み、小学校の体育館へ。堤防沿いの道は通らない",
         transportKind: "family_car",
         transport: "娘の車",
-        nearest: "かわなぎ中学校",
+        nearest: SEED_NEAREST["p-01"].name,
         nearestMeans: "foot",
         nearestMinutes: 15,
         carryItems: ["予備ボンベ", "薬", "お薬手帳"],
@@ -345,7 +365,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "娘",
         name: "森 恵子",
         kana: "モリ ケイコ",
-        address: inCity("ほたる坂町"),
+        address: inCity("鴨川二丁目"),
         phone: phone(11),
         mobile: phone(33),
         reach: "in_city",
@@ -360,7 +380,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "隣人",
         name: "木村 ヨシ",
         kana: "キムラ ヨシ",
-        address: inCity("かわなぎ町"),
+        address: inCity("市坪西町"),
         phone: phone(12),
         reach: "nearby",
         emergency_order: 2,
@@ -369,8 +389,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_smartphone: 0,
         note: "82 歳",
       }),
-      contact({ id: "c-01-3", kind: "home_doctor", name: "かわなぎ内科医院", kana: "カワナギナイカイイン", address: inCity("かわなぎ町"), phone: phone(42) }),
-      contact({ id: "c-01-4", kind: "pharmacy", name: "かわなぎ薬局", kana: "カワナギヤッキョク", address: inCity("かわなぎ町"), phone: phone(52) }),
+      contact({ id: "c-01-3", kind: "home_doctor", name: "こはるび内科医院", kana: "コハルビナイカイイン", address: inCity("市坪西町"), phone: phone(42) }),
+      contact({ id: "c-01-4", kind: "pharmacy", name: "こはるび薬局", kana: "コハルビヤッキョク", address: inCity("市坪西町"), phone: phone(52) }),
     ],
     refusedConsents: [],
     clocks: [
@@ -421,7 +441,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "female",
-        address: { city: CITY, town: "かわなぎ町" },
+        address: { city: CITY, town: "北井門五丁目" },
         location: SEED_LOCATIONS["p-02"],
         housing: { floor: 1, floors: 2, structure: "wood", builtYear: 1980, bedroom: "1 階 居間", type: "detached" },
         household: "with_spouse",
@@ -453,13 +473,13 @@ export const SEED_PEOPLE: SeedPerson[] = [
       // 段差・ペットは空ける（埋めると計画書〔前からの紙面〕が 3 頁目にあふれる）。避難先 2 も空ける（本人の 1 枚の表が在宅避難の行を足すと 3 頁目にあふれる）。docs/progress/t142.md
       evacuation: {
         hazards: [{ kind: "flood", depthM: 3 }],
-        destination1: "かわなぎ総合病院",
+        destination1: "こはるび総合病院",
         destination1Minutes: 15,
         stayHome: false,
         route: "夫の車で病院へ。訪問看護が付き添い、呼吸器と吸引器を積む",
         transportKind: "other",
         transport: "訪問看護と夫",
-        nearest: "かわなぎ小学校",
+        nearest: SEED_NEAREST["p-02"].name,
         nearestMeans: "family_car",
         nearestMinutes: 5,
         carryItems: ["吸引器", "予備の回路", "バッテリー"],
@@ -479,7 +499,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "夫",
         name: "小林 健一",
         kana: "コバヤシ ケンイチ",
-        address: inCity("かわなぎ町"),
+        address: inCity("北井門五丁目"),
         phone: phone(13),
         reach: "together",
         emergency_order: 1,
@@ -492,8 +512,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
       contact({
         id: "c-02-2",
         kind: "visiting_nurse",
-        name: "かわなぎ訪問看護",
-        address: inCity("かわなぎ町"),
+        name: "こはるび訪問看護",
+        address: inCity("北井門五丁目"),
         phone: phone(14),
         reach: "in_city",
         emergency_order: 2,
@@ -503,15 +523,15 @@ export const SEED_PEOPLE: SeedPerson[] = [
       contact({
         id: "c-02-3",
         kind: "oxygen_supplier",
-        name: "かわなぎ医療機器",
+        name: "こはるび医療機器",
         kana: "カワナギイリョウキキ",
-        address: inCity("かわなぎ町"),
+        address: inCity("北井門五丁目"),
         phone: phone(31),
         reach: "in_city",
         night_ok: 1,
         note: "呼吸器の予備電池を届ける",
       }),
-      contact({ id: "c-02-4", kind: "home_doctor", name: "かわなぎ在宅クリニック", kana: "カワナギザイタククリニック", address: inCity("かわなぎ町"), phone: phone(43) }),
+      contact({ id: "c-02-4", kind: "home_doctor", name: "こはるび在宅クリニック", kana: "コハルビザイタククリニック", address: inCity("北井門五丁目"), phone: phone(43) }),
     ],
     refusedConsents: [],
     clocks: [
@@ -544,7 +564,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "male",
-        address: { city: CITY, town: "みずほし町" },
+        address: { city: CITY, town: "久保田町" },
         location: SEED_LOCATIONS["p-03"],
         housing: { floor: 2, floors: 2, structure: "wood", builtYear: 1985, bedroom: "2 階 南の洋室", type: "detached" },
         household: "with_spouse",
@@ -577,7 +597,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         route: "長男の車で県道を通って公民館へ。透析の日は透析先へ直に向かう",
         transportKind: "family_car",
         transport: "長男の車",
-        nearest: "みずほし小学校",
+        nearest: SEED_NEAREST["p-03"].name,
         nearestMeans: "foot",
         nearestMinutes: 10,
         carryItems: ["透析手帳", "薬"],
@@ -597,7 +617,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "妻",
         name: "田中 和子",
         kana: "タナカ カズコ",
-        address: inCity("みずほし町"),
+        address: inCity("久保田町"),
         phone: phone(15),
         reach: "together",
         emergency_order: 1,
@@ -612,7 +632,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "長男",
         name: "田中 浩",
         kana: "タナカ ヒロシ",
-        address: inCity("しおかぜ町"),
+        address: inCity("大可賀三丁目"),
         phone: phone(16),
         reach: "in_city",
         emergency_order: 2,
@@ -638,9 +658,9 @@ export const SEED_PEOPLE: SeedPerson[] = [
       contact({
         id: "c-03-4",
         kind: "dialysis_center",
-        name: "みずほし透析クリニック",
+        name: "あおたけ透析クリニック",
         kana: "ミズホシトウセキクリニック",
-        address: inCity("みずほし町"),
+        address: inCity("久保田町"),
         phone: phone(18),
         reach: "in_city",
         note: "月水金の午前",
@@ -649,9 +669,9 @@ export const SEED_PEOPLE: SeedPerson[] = [
       contact({
         id: "c-03-5",
         kind: "hospital",
-        name: "みずほし総合病院",
+        name: "あおたけ総合病院",
         kana: "ミズホシソウゴウビョウイン",
-        address: inCity("みずほし町"),
+        address: inCity("久保田町"),
         phone: phone(32),
         reach: "in_city",
         note: "シャントの手術をした病院",
@@ -692,7 +712,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "female",
-        address: { city: CITY, town: "くぬぎ谷町" },
+        address: { city: CITY, town: "常光寺町" },
         location: SEED_LOCATIONS["p-04"],
         housing: { floor: 1, floors: 1, structure: "wood", builtYear: 1968, bedroom: "1 階 居間の隣", type: "detached" },
         household: "alone",
@@ -724,7 +744,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         stayHome: false,
         transportKind: "foot",
         transport: "民生委員と歩いて",
-        nearest: "くぬぎ谷公民館",
+        nearest: SEED_NEAREST["p-04"].name,
         nearestMeans: "foot",
         nearestMinutes: 5,
         pets: "なし",
@@ -744,7 +764,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         kind: "welfare_commissioner",
         name: "清水 正子",
         kana: "シミズ マサコ",
-        address: inCity("くぬぎ谷町"),
+        address: inCity("常光寺町"),
         phone: phone(19),
         mobile: phone(81),
         reach: "nearby",
@@ -770,8 +790,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 1,
         has_smartphone: 1,
       }),
-      contact({ id: "c-04-3", kind: "home_doctor", name: "くぬぎ谷診療所", kana: "クヌギダニシンリョウジョ", address: inCity("くぬぎ谷町"), phone: phone(45) }),
-      contact({ id: "c-04-4", kind: "pharmacy", name: "くぬぎ谷薬局", kana: "クヌギダニヤッキョク", address: inCity("くぬぎ谷町"), phone: phone(55) }),
+      contact({ id: "c-04-3", kind: "home_doctor", name: "しらかし診療所", kana: "シラカシシンリョウジョ", address: inCity("常光寺町"), phone: phone(45) }),
+      contact({ id: "c-04-4", kind: "pharmacy", name: "しらかし薬局", kana: "シラカシヤッキョク", address: inCity("常光寺町"), phone: phone(55) }),
     ],
     refusedConsents: [],
     clocks: [
@@ -803,7 +823,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "female",
-        address: { city: CITY, town: "みずほし町" },
+        address: { city: CITY, town: "北斎院町" },
         location: SEED_LOCATIONS["p-05"],
         housing: { floor: 2, floors: 2, structure: "wood", builtYear: 1976, bedroom: "2 階 東の和室", type: "detached" },
         household: "alone",
@@ -836,7 +856,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         barriers: "2 階から階段だけ",
         transportKind: "pickup",
         transport: "福祉車両の送迎（手配が要る）",
-        nearest: "みずほし小学校",
+        nearest: SEED_NEAREST["p-05"].name,
         nearestMeans: "pickup",
         nearestMinutes: 10,
         pets: "なし",
@@ -866,8 +886,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 1,
         has_smartphone: 1,
       }),
-      contact({ id: "c-05-2", kind: "home_doctor", name: "みずほし在宅診療所", kana: "ミズホシザイタクシンリョウジョ", address: inCity("みずほし町"), phone: phone(46) }),
-      contact({ id: "c-05-3", kind: "pharmacy", name: "みずほし調剤薬局", kana: "ミズホシチョウザイヤッキョク", address: inCity("みずほし町"), phone: phone(56) }),
+      contact({ id: "c-05-2", kind: "home_doctor", name: "あおたけ在宅診療所", kana: "アオタケザイタクシンリョウジョ", address: inCity("北斎院町"), phone: phone(46) }),
+      contact({ id: "c-05-3", kind: "pharmacy", name: "あおたけ調剤薬局", kana: "アオタケチョウザイヤッキョク", address: inCity("北斎院町"), phone: phone(56) }),
     ],
     refusedConsents: [],
     clocks: [
@@ -900,7 +920,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "female",
-        address: { city: CITY, town: "あしなみ町" },
+        address: { city: CITY, town: "土居田町" },
         location: SEED_LOCATIONS["p-06"],
         housing: { floor: 1, floors: 2, structure: "wood", builtYear: 1983, bedroom: "1 階 居間の隣", type: "detached" },
         household: "with_child",
@@ -935,7 +955,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         route: "娘の車で支流の橋を渡らずに小学校へ",
         transportKind: "family_car",
         transport: "娘の車",
-        nearest: "あしなみ公民館",
+        nearest: SEED_NEAREST["p-06"].name,
         nearestMeans: "wheelchair",
         nearestMinutes: 10,
         carryItems: ["栄養剤", "注入の道具"],
@@ -955,7 +975,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "娘",
         name: "高橋 美和",
         kana: "タカハシ ミワ",
-        address: inCity("あしなみ町"),
+        address: inCity("土居田町"),
         phone: phone(22),
         reach: "together",
         emergency_order: 1,
@@ -970,7 +990,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "息子",
         name: "高橋 修",
         kana: "タカハシ オサム",
-        address: inCity("そらみ台"),
+        address: inCity("西長戸町"),
         phone: phone(23),
         reach: "in_city",
         emergency_order: 2,
@@ -984,7 +1004,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "孫",
         name: "高橋 翔太",
         kana: "タカハシ ショウタ",
-        address: inCity("ほたる坂町"),
+        address: inCity("鴨川二丁目"),
         phone: phone(24),
         reach: "in_city",
         emergency_order: 3,
@@ -992,7 +1012,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 1,
         has_smartphone: 1,
       }),
-      contact({ id: "c-06-4", kind: "home_doctor", name: "あしなみ在宅クリニック", kana: "アシナミザイタククリニック", address: inCity("あしなみ町"), phone: phone(47) }),
+      contact({ id: "c-06-4", kind: "home_doctor", name: "ゆうすげ在宅クリニック", kana: "ユウスゲザイタククリニック", address: inCity("土居田町"), phone: phone(47) }),
     ],
     refusedConsents: [],
     clocks: [
@@ -1025,7 +1045,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "male",
-        address: { city: CITY, town: "くぬぎ谷町" },
+        address: { city: CITY, town: "祝谷東町" },
         location: SEED_LOCATIONS["p-07"],
         housing: { floor: 1, floors: 1, structure: "wood", builtYear: 1970, bedroom: "奥の和室", type: "detached" },
         household: "alone",
@@ -1066,7 +1086,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         barriers: "玄関に 20 cm の段差",
         transportKind: "family_car",
         transport: "弟の車",
-        nearest: "くぬぎ谷公民館",
+        nearest: SEED_NEAREST["p-07"].name,
         nearestMeans: "foot",
         nearestMinutes: 10,
         pets: "なし",
@@ -1088,7 +1108,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "弟",
         name: "加藤 実",
         kana: "カトウ ミノル",
-        address: inCity("ほたる坂町"),
+        address: inCity("鴨川二丁目"),
         phone: phone(25),
         mobile: phone(40),
         reach: "in_city",
@@ -1102,7 +1122,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         kind: "welfare_commissioner",
         name: "前田 和夫",
         kana: "マエダ カズオ",
-        address: inCity("くぬぎ谷町"),
+        address: inCity("祝谷東町"),
         phone: phone(26),
         reach: "nearby",
         emergency_order: 2,
@@ -1110,7 +1130,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 0,
         has_smartphone: 0,
       }),
-      contact({ id: "c-07-3", kind: "home_doctor", name: "くぬぎ谷内科", kana: "クヌギダニナイカ", address: inCity("くぬぎ谷町"), phone: phone(48) }),
+      contact({ id: "c-07-3", kind: "home_doctor", name: "しらかし内科", kana: "シラカシナイカ", address: inCity("祝谷東町"), phone: phone(48) }),
     ],
     refusedConsents: [{ kind: "supporters", note: "支援者への提供に同意していない" }],
     clocks: [
@@ -1143,7 +1163,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "male",
-        address: { city: CITY, town: "うみなり町" },
+        address: { city: CITY, town: "大可賀三丁目" },
         location: SEED_LOCATIONS["p-08"],
         housing: { floor: 2, floors: 2, structure: "wood", builtYear: 1990, bedroom: "2 階 北の和室", type: "detached" },
         household: "with_child",
@@ -1191,7 +1211,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         barriers: "玄関に小さな段差",
         transportKind: "foot",
         transport: "徒歩",
-        nearest: "うみなり津波避難タワー",
+        nearest: SEED_NEAREST["p-08"].name,
         nearestMeans: "foot",
         nearestMinutes: 5,
         pets: "なし",
@@ -1212,7 +1232,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "息子",
         name: "井上 大輔",
         kana: "イノウエ ダイスケ",
-        address: inCity("うみなり町"),
+        address: inCity("大可賀三丁目"),
         phone: phone(27),
         mobile: phone(84),
         reach: "together",
@@ -1222,8 +1242,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 1,
         has_smartphone: 1,
       }),
-      contact({ id: "c-08-2", kind: "home_doctor", name: "うみなり内科医院", kana: "ウミナリナイカイイン", address: inCity("うみなり町"), phone: phone(49) }),
-      contact({ id: "c-08-3", kind: "pharmacy", name: "うみなり薬局", kana: "ウミナリヤッキョク", address: inCity("うみなり町"), phone: phone(59) }),
+      contact({ id: "c-08-2", kind: "home_doctor", name: "いさりび内科医院", kana: "イサリビナイカイイン", address: inCity("大可賀三丁目"), phone: phone(49) }),
+      contact({ id: "c-08-3", kind: "pharmacy", name: "いさりび薬局", kana: "イサリビヤッキョク", address: inCity("大可賀三丁目"), phone: phone(59) }),
     ],
     refusedConsents: [],
     clocks: [
@@ -1260,7 +1280,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "male",
-        address: { city: CITY, town: "そらみ台" },
+        address: { city: CITY, town: "西長戸町" },
         location: SEED_LOCATIONS["p-09"],
         housing: { floor: 2, floors: 2, structure: "wood", builtYear: 1995, bedroom: "2 階 奥の部屋", type: "apartment" },
         household: "alone",
@@ -1293,7 +1313,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         stayHome: false,
         barriers: "2 階へは外階段だけ",
         transportKind: "foot",
-        nearest: "そらみ台公園",
+        nearest: SEED_NEAREST["p-09"].name,
         nearestMeans: "foot",
         nearestMinutes: 5,
         pets: "なし",
@@ -1314,7 +1334,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "娘",
         name: "石川 真理",
         kana: "イシカワ マリ",
-        address: inCity("ほたる坂町"),
+        address: inCity("鴨川二丁目"),
         phone: phone(28),
         mobile: phone(41),
         reach: "in_city",
@@ -1329,7 +1349,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "隣人",
         name: "藤田 ミチ",
         kana: "フジタ ミチ",
-        address: inCity("そらみ台"),
+        address: inCity("西長戸町"),
         phone: phone(29),
         mobile: phone(85),
         reach: "nearby",
@@ -1339,8 +1359,8 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 0,
         has_smartphone: 0,
       }),
-      contact({ id: "c-09-3", kind: "home_doctor", name: "そらみ台内科", kana: "ソラミダイナイカ", address: inCity("そらみ台"), phone: phone(50) }),
-      contact({ id: "c-09-4", kind: "pharmacy", name: "そらみ台薬局", kana: "ソラミダイヤッキョク", address: inCity("そらみ台"), phone: phone(60) }),
+      contact({ id: "c-09-3", kind: "home_doctor", name: "つきくさ内科", kana: "ツキクサナイカ", address: inCity("西長戸町"), phone: phone(50) }),
+      contact({ id: "c-09-4", kind: "pharmacy", name: "つきくさ薬局", kana: "ツキクサヤッキョク", address: inCity("西長戸町"), phone: phone(60) }),
     ],
     refusedConsents: [{ kind: "medical", note: "医療班への提供に同意していない" }],
     clocks: [
@@ -1374,7 +1394,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
     ledger: {
       basic: {
         sex: "male",
-        address: { city: CITY, town: "そらみ台" },
+        address: { city: CITY, town: "鴨川二丁目" },
         location: SEED_LOCATIONS["p-10"],
         housing: { floor: 2, floors: 2, structure: "wood", builtYear: 1988, bedroom: "2 階 和室", type: "detached" },
         household: "with_spouse",
@@ -1407,7 +1427,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         barriers: "玄関に小さな段差",
         transportKind: "foot",
         transport: "徒歩",
-        nearest: "そらみ台公園",
+        nearest: SEED_NEAREST["p-10"].name,
         nearestMeans: "foot",
         nearestMinutes: 5,
         pets: "なし",
@@ -1428,7 +1448,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         relation: "妻",
         name: "中村 幸子",
         kana: "ナカムラ サチコ",
-        address: inCity("そらみ台"),
+        address: inCity("鴨川二丁目"),
         phone: phone(30),
         mobile: phone(86),
         reach: "together",
@@ -1439,7 +1459,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
         has_car: 0,
         has_smartphone: 1,
       }),
-      contact({ id: "c-10-2", kind: "home_doctor", name: "そらみ台クリニック", kana: "ソラミダイクリニック", address: inCity("そらみ台"), phone: phone(51) }),
+      contact({ id: "c-10-2", kind: "home_doctor", name: "つきくさクリニック", kana: "ツキクサクリニック", address: inCity("鴨川二丁目"), phone: phone(51) }),
     ],
     refusedConsents: [],
     clocks: [],

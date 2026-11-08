@@ -214,11 +214,11 @@ describe("置き換えの境界と元に戻す印（T88）", () => {
     expect(t("森病院の外来")).not.toContain("娘病院");
   });
 
-  it("台帳の避難先「かわなぎ小学校」は（町名）小学校で渡り、Claude が写した値は元の言葉に戻る", () => {
-    const sources = ["避難先は かわなぎ小学校。娘の森 恵子さんが車で送る", ...inputTexts(p01)];
+  it("台帳の避難先「市坪西小学校」は（町名）小学校で渡り、Claude が写した値は元の言葉に戻る", () => {
+    const sources = ["避難先は 市坪西小学校。娘の森 恵子さんが車で送る", ...inputTexts(p01)];
     const back = sourceRestorer(sources, key);
     expect(t(sources[0])).toBe("避難先は （町名）小学校。娘が車で送る");
-    expect(back("（町名）小学校")).toBe("かわなぎ小学校");
+    expect(back("（町名）小学校")).toBe("市坪西小学校");
     // 役割名は戻さない（続柄の言葉として使われる）
     expect(back("娘")).toBe("娘");
     expect(back("娘が車で送る")).toBe("娘が車で送る");

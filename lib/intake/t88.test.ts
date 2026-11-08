@@ -22,7 +22,7 @@ const TODAY = "2026-11-04";
 const p01: SeedPerson = withTownShelter(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
 function withTownShelter(p: SeedPerson): SeedPerson {
   const { destination1Location: _, ...evacuation } = p.ledger.evacuation;
-  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "かわなぎ小学校" } } };
+  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "市坪西小学校" } } };
 }
 
 function rowsOf(p: SeedPerson): PersonPageRows {
@@ -67,7 +67,7 @@ function aiCtx(claude: ClaudeClient): AskJsonContext {
   return { env: { ANTHROPIC_API_KEY: "dummy" }, usage: d1UsageStore(d1FromSqlite(db)), office: { id: "office-demo", kind: "demo" }, now: () => new Date("2026-11-04T03:00:00.000Z"), claude };
 }
 
-const TEXT = "避難先は かわなぎ小学校。娘の森 恵子さん（090-0000-0011）が市内にいて車がある。隣の田中さんが鍵を持っている。2 次避難先は かわなぎ公民館";
+const TEXT = "避難先は 市坪西小学校。娘の森 恵子さん（090-0000-0011）が市内にいて車がある。隣の田中さんが鍵を持っている。2 次避難先は 市坪西公民館";
 
 /** Claude が入力と今の台帳（仮名化済み）の言葉のまま写した分け方 */
 const OUTPUT: ExtractOutput = {
@@ -90,7 +90,7 @@ describe("入れる欄の提案が台帳を壊さない（T88）", () => {
     const sent = JSON.stringify(calls[0].messages);
     expect(sent).toContain("娘（（電話））が市内にいて車がある");
     expect(sent).not.toContain("娘の娘");
-    for (const s of ["かわなぎ", "森 恵子", "恵子", "田中", "090-0000-0011"]) expect(sent, s).not.toContain(s);
+    for (const s of ["市坪西", "森 恵子", "恵子", "田中", "090-0000-0011"]) expect(sent, s).not.toContain(s);
     // 今の台帳の避難先も（町名）小学校で渡る
     expect(sent).toContain("（町名）小学校");
   });
@@ -99,9 +99,9 @@ describe("入れる欄の提案が台帳を壊さない（T88）", () => {
     const { client } = fakeClaude(OUTPUT);
     const p = await extractIntake(rowsOf(p01), TEXT, aiCtx(client), { today: TODAY });
     const d1 = p.items.find((x) => x.id === "field-evacuation.destination1")!;
-    expect(d1).toMatchObject({ current: "かわなぎ小学校", next: "かわなぎ小学校", state: "same", change: null, masked: false });
+    expect(d1).toMatchObject({ current: "市坪西小学校", next: "市坪西小学校", state: "same", change: null, masked: false });
     const d2 = p.items.find((x) => x.id === "field-evacuation.destination2")!;
-    expect(d2).toMatchObject({ next: "かわなぎ公民館", masked: false });
+    expect(d2).toMatchObject({ next: "市坪西公民館", masked: false });
   });
 
   it("娘は今の連絡先の行に当たり、新しい連絡先を足す提案にしない。特記は元の文", async () => {

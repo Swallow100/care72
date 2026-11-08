@@ -368,20 +368,20 @@ describe("world_step の形と捨て方", () => {
 
 describe("町の停電と、出来事を人に当てる", () => {
   it("town の OutageArea: 町名で見る（本人役・ルールの表・採点）。広がると町を足し、始まりは町ごと", () => {
-    const area = { scope: "towns" as const, towns: ["かわなぎ町"] };
-    expect(inOutageArea(area, [], "かわなぎ町")).toBe(true);
-    expect(inOutageArea(area, [], "そらみ台")).toBe(false);
-    expect(inTowns(outageTownsOf(area, []), "そらみ台")).toBe(false);
+    const area = { scope: "towns" as const, towns: ["市坪西町"] };
+    expect(inOutageArea(area, [], "市坪西町")).toBe(true);
+    expect(inOutageArea(area, [], "西長戸町")).toBe(false);
+    expect(inTowns(outageTownsOf(area, []), "西長戸町")).toBe(false);
     let w: WorldState = EMPTY_WORLD;
-    w = applyEvent(w, { change: { kind: "outage", area: { ...area, since: { かわなぎ町: 1 } } }, text: "" }, 1);
-    w = applyEvent(w, { change: { kind: "outage", area: { scope: "towns", towns: ["そらみ台"], since: { そらみ台: 24 } } }, text: "" }, 24);
-    expect(w.outage).toMatchObject({ since: 1, area: { towns: ["かわなぎ町", "そらみ台"], since: { かわなぎ町: 1, そらみ台: 24 } } });
+    w = applyEvent(w, { change: { kind: "outage", area: { ...area, since: { 市坪西町: 1 } } }, text: "" }, 1);
+    w = applyEvent(w, { change: { kind: "outage", area: { scope: "towns", towns: ["西長戸町"], since: { 西長戸町: 24 } } }, text: "" }, 24);
+    expect(w.outage).toMatchObject({ since: 1, area: { towns: ["市坪西町", "西長戸町"], since: { 市坪西町: 1, 西長戸町: 24 } } });
     // 停電の時計は町ごとの始まりから
     const k = { kind: "device", category: "oxygen", label: "電池", value: 2, unit: "hour", starts_on: "outage", depends_on: null, depends_check: null } as const;
     const runs = clockRuns(
       [{ ...k, person_id: "x" }, { ...k, person_id: "y" }],
-      new Map([["x", "かわなぎ町"], ["y", "そらみ台"]]),
-      { since: 1, towns: ["かわなぎ町", "そらみ台"], townSince: { かわなぎ町: 1, そらみ台: 24 } },
+      new Map([["x", "市坪西町"], ["y", "西長戸町"]]),
+      { since: 1, towns: ["市坪西町", "西長戸町"], townSince: { 市坪西町: 1, 西長戸町: 24 } },
     );
     expect(runs.map((r) => [r.person, r.startMinute])).toEqual([["x", 60], ["y", 1440]]);
   });
@@ -393,7 +393,7 @@ describe("町の停電と、出来事を人に当てる", () => {
         narration: "",
         events: [
           { kind: "landslide", town: "丁地区", target: "", name: "", value: "" },
-          { kind: "flood", town: "", target: ctx.key.people.find((p) => townOf(p.personId) === "うみなり町")!.alias, name: "", value: "0.5" },
+          { kind: "flood", town: "", target: ctx.key.people.find((p) => townOf(p.personId) === "大可賀三丁目")!.alias, name: "", value: "0.5" },
           { kind: "facility", town: "", target: "", name: "河口の透析クリニック", value: "closed" },
         ],
         farewells: [],
@@ -401,10 +401,10 @@ describe("町の停電と、出来事を人に当てる", () => {
       ctx,
     );
     const slide = out.find((e) => e.change.kind === "landslide")!.change as { persons: string[] };
-    expect(slide.persons.sort()).toEqual(ALL.filter((id) => townOf(id) === "くぬぎ谷町").sort());
+    expect(slide.persons.sort()).toEqual(ALL.filter((id) => ["常光寺町", "祝谷東町"].includes(townOf(id) ?? "")).sort());
     const flood = out.find((e) => e.change.kind === "town_flood")!.change as { town: string; persons: string[] };
     expect(flood.town).toBe("大可賀付近");
-    expect(flood.persons).toEqual(ALL.filter((id) => townOf(id) === "うみなり町"));
+    expect(flood.persons).toEqual(ALL.filter((id) => townOf(id) === "大可賀三丁目"));
     const fac = out.find((e) => e.change.kind === "town_facility")!.change as { persons: string[] };
     expect(fac.persons).toEqual(SEED_PEOPLE.filter((p) => p.clocks.some((k) => k.category === "dialysis")).map((p) => p.person.id));
     // 当てると、住む人に印・道・施設

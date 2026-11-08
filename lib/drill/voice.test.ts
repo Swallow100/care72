@@ -233,12 +233,12 @@ describe("drillVoice", () => {
         `INSERT INTO signals (id, person_id, drill_id, color, source, transcript, occurred_at)
          VALUES (?, 'p-02', ?, 'green', 'family', ?, ?)`,
       )
-      .run(`${ID}-0-s8`, ID, "みずほし町としおかぜ町が停電、かわなぎ町も", START);
+      .run(`${ID}-0-s8`, ID, "久保田町と大可賀三丁目が停電、市坪西町も", START);
     const { d, calls } = deps();
     const r = await drillVoice(d, { office: DEMO }, ID, { signal: `${ID}-0-s8` });
     expect(r).toMatchObject({ ok: true });
     expect(calls).toHaveLength(1);
-    for (const t of ["みずほし", "しおかぜ", "かわなぎ"]) expect(calls[0].input, t).not.toContain(t);
+    for (const t of ["久保田", "大可賀三丁目", "市坪西"]) expect(calls[0].input, t).not.toContain(t);
     expectNoPersonalData(JSON.stringify(calls[0]));
   });
 

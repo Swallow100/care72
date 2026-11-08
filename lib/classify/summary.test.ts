@@ -199,7 +199,7 @@ describe("まとめの本体（summarize）", () => {
       expect(SUMMARY_SYSTEM).toContain(w);
     }
     // 指示に氏名・町名・電話は無い
-    expect(SUMMARY_SYSTEM).not.toMatch(/山田|かわなぎ|090-/);
+    expect(SUMMARY_SYSTEM).not.toMatch(/山田|市坪西|090-/);
   });
 
   it("80 字で切る。かぎ括弧と改行を外す。空は形の違い。文字起こしに無い禁じる語（診断・判定・重症・緊急度）は捨てる", async () => {
@@ -242,10 +242,10 @@ describe("まとめの本体（summarize）", () => {
 
   it("送った物に氏名・町名・電話が無い（伏せた文だけ）", async () => {
     const { client, calls } = fake({ summary: () => ({ summary: "（氏名）さんに電話してほしいと話す。" }) });
-    const text = pseudonymizeText("山田 ハナです。森 恵子に 090-0000-0012 で でんわして。かわなぎ町", key);
+    const text = pseudonymizeText("山田 ハナです。森 恵子に 090-0000-0012 で でんわして。市坪西町", key);
     await summarize({ text, key }, aiCtx(client));
     const sent = JSON.stringify(calls[0].params.messages);
-    expect(sent).not.toMatch(/山田|ハナ|森 恵子|090-0000-0012|かわなぎ/);
+    expect(sent).not.toMatch(/山田|ハナ|森 恵子|090-0000-0012|市坪西/);
   });
 
   it("返った文も maskReply を通す: 作った名前・住所は伏せ字に、台帳の名前・電話の形が残れば捨てる（見直しの正しさ 低 7）", async () => {
@@ -344,7 +344,7 @@ describe("信号の行に書く（分類と並べて）", () => {
     await afterRecording(db, target(a), deps(client));
     expect(calls).toHaveLength(2);
     const sent = JSON.stringify(calls.map((c) => c.params));
-    expect(sent).not.toMatch(/33\.83|132\.76|福音小学校|かわなぎ小学校|shelterWhich|"d1"/);
+    expect(sent).not.toMatch(/33\.83|132\.76|福音小学校|市坪西小学校|shelterWhich|"d1"/);
   });
 });
 

@@ -163,7 +163,7 @@ describe("T153 発災開始", () => {
       startedAt: t.disasterAt,
       startedBy: j.accountId,
       startedByName: "審査員 1",
-      outage: { scope: "area", towns: ["かわなぎ町"], startedAt: t.outageAt },
+      outage: { scope: "area", towns: ["市坪西町", "北井門五丁目"], startedAt: t.outageAt },
       alertLevel: 4,
       water: null,
       road: null,
@@ -171,7 +171,7 @@ describe("T153 発災開始", () => {
     });
     const log = await loadOfficeLog(db, DEMO_OFFICE_ID);
     expect(log.map((l) => [l.kind, l.body, l.who])).toEqual([
-      ["disaster_info", "停電 地区（かわなぎ町） 11/6 08:00〜・警戒レベル 4", "審査員 1"],
+      ["disaster_info", "停電 地区（市坪西町・北井門五丁目） 11/6 08:00〜・警戒レベル 4", "審査員 1"],
       ["disaster_on", "大雨", "審査員 1"],
     ]);
     // 確認用の事業所は平時のまま

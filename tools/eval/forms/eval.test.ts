@@ -107,7 +107,7 @@ describe("数え方（入れる欄）", () => {
 
 describe("送る中身の漏れの検査", () => {
   it("種の氏名・カナ・電話・町名・生年月日を見つける", () => {
-    const hits = scanLeaks("山田 ハナさん（ヤマダ ハナ）は かわなぎ町。電話 090-0000-0011、昭和 17 年 4 月 18 日生");
+    const hits = scanLeaks("山田 ハナさん（ヤマダ ハナ）は 市坪西町。電話 090-0000-0011、昭和 17 年 4 月 18 日生");
     const kinds = new Set(hits.map((h) => h.kind));
     expect(kinds).toEqual(new Set(["name", "kana", "town", "phone", "birth", "weak"]));
   });
@@ -240,7 +240,7 @@ describe("偽の client で 1 周（Chrome を使わない）", () => {
     // 前の回との差の表と 1 行
     const md = diffMarkdown(r, prev);
     expect(md).toContain("| 様式 当たり（別解を含む） |");
-    expect(md).not.toMatch(/山田|かわなぎ|090-0000/);
+    expect(md).not.toMatch(/山田|市坪西|090-0000/);
     expect(oneLine(r, prev)).toMatch(/^20261105-000001-fake（偽 noisy） \| 様式 当\d+\/\d+\([+-]\d+|±0\)/);
   }, 60_000);
 });

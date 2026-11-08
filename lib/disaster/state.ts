@@ -340,7 +340,7 @@ export function disasterMark(s: DisasterState, now: string): DisasterMark {
 
 // ---------- 経過の 1 行 ----------
 
-/** 停電の言い方「事業所全体 11/4 08:00〜」「地区（かわなぎ町・みずほし町） 11/4 08:00〜」「無し」 */
+/** 停電の言い方「事業所全体 11/4 08:00〜」「地区（市坪西町・北井門五丁目） 11/4 08:00〜」「無し」 */
 export function outageText(o: OutageState): string {
   if (o.scope === "none" || !o.startedAt) return OUTAGE_SCOPE_LABELS.none;
   const where = o.scope === "area" ? `${OUTAGE_SCOPE_LABELS.area}（${o.towns.join("・")}）` : OUTAGE_SCOPE_LABELS.office;

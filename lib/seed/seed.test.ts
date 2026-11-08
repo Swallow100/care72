@@ -155,7 +155,7 @@ describe("種（npm run db:reset）", () => {
     sqlite = await seeded();
     const db = d1FromSqlite(sqlite);
     // 発災開始で停電にする町（浸水 3 m 以上の人の住む町）は種の台帳から
-    expect(demoOutageTowns()).toEqual(["かわなぎ町"]);
+    expect(demoOutageTowns()).toEqual(["市坪西町", "北井門五丁目"]);
     expect(await loadDisasterState(db, DEMO.id)).toMatchObject({ kind: "normal", startedAt: null, version: 0 });
     expect(await loadOfficeLog(db, DEMO.id)).toEqual([]);
     expect((await loadDisasterState(db, PARTNER.id)).kind).toBe("normal");

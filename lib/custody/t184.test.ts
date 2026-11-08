@@ -20,7 +20,7 @@ const SEED_NOW = "2026-11-06T00:00:00.000Z";
 const AT = "2026-11-06T02:00:00.000Z";
 const LATER = "2026-11-06T02:30:00.000Z";
 const TODAY = "2026-11-06";
-const HOSPITAL = "かわなぎ総合病院";
+const HOSPITAL = "こはるび総合病院";
 const SCHOOL = "かわなぎ小学校";
 const JUDGE_PW = "test-judge-pass-t184";
 

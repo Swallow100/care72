@@ -25,7 +25,7 @@ const TODAY = "2026-11-05";
 const P01: SeedPerson = withTownShelter(SEED_PEOPLE.find((p) => p.person.id === "p-01")!);
 function withTownShelter(p: SeedPerson): SeedPerson {
   const { destination1Location: _, ...evacuation } = p.ledger.evacuation;
-  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "かわなぎ小学校" } } };
+  return { ...p, ledger: { ...p.ledger, evacuation: { ...evacuation, destination1: "市坪西小学校" } } };
 }
 
 function rowsOf(p: SeedPerson, ledger = p.ledger): PersonPageRows {
@@ -79,14 +79,14 @@ const BROKEN = ["(町名)総合病院", "町名総合病院", "【町名】総�
 
 describe("文の道: 崩れた町名の伏せ字を元の言葉に戻す（T122）", () => {
   // 評価の台の自由文の形（避難先の行）。台帳の避難先 2 は空
-  const TEXT = "・避難先2：かわなぎ総合病院\n・移動手段：家族の車";
+  const TEXT = "・避難先2：市坪西総合病院\n・移動手段：家族の車";
 
   for (const v of BROKEN) {
-    it(`「${v}」は「かわなぎ総合病院」に戻る`, async () => {
+    it(`「${v}」は「市坪西総合病院」に戻る`, async () => {
       const out: ExtractOutput = { ...EMPTY_OUT, items: [{ field: "evacuation.destination2", value: v }] };
       const p = await extractIntake(rowsOf(P01), TEXT, aiCtx(fakeClaude(out)), { today: TODAY });
       const d2 = p.items.find((x) => x.id === "field-evacuation.destination2");
-      expect(d2).toMatchObject({ next: "かわなぎ総合病院", state: "add", change: { t: "field", value: "かわなぎ総合病院" } });
+      expect(d2).toMatchObject({ next: "市坪西総合病院", state: "add", change: { t: "field", value: "市坪西総合病院" } });
       expect(p.dropped).toBe(0);
     });
   }
@@ -121,7 +121,7 @@ describe("写真・PDF の道: 崩れた伏せ字（T122）", () => {
     for (const v of ["(町名)小学校", "町名小学校", "【町名】小学校"]) {
       const out: ExtractOutput = { ...EMPTY_OUT, items: [{ field: "evacuation.destination1", value: v }] };
       const p = await readIntake(rowsOf(P01), photo(), aiCtx(fakeClaude(out, OPUS)), { today: TODAY });
-      expect(p.items.find((x) => x.id === "field-evacuation.destination1"), v).toMatchObject({ next: "かわなぎ小学校", state: "same", change: null });
+      expect(p.items.find((x) => x.id === "field-evacuation.destination1"), v).toMatchObject({ next: "市坪西小学校", state: "same", change: null });
     }
   });
 

@@ -135,22 +135,22 @@ describe("migration 0036（事業所の情報と地域）", () => {
     d.close();
   });
 
-  it("種のデモ事業所は架空の所在地・電話・周りの市を持ち、松山市の中心のまま。ほかの事業所は持たない", () => {
+  it("種のデモ事業所は実在の町名までの所在地（T189）・架空の電話・周りの市を持ち、松山市の中心のまま。ほかの事業所は持たない", () => {
     const demo = office();
-    expect(demo).toMatchObject({ city: "松山市", center_lat: 33.84, center_lng: 132.765, address: "愛媛県松山市みずほし町", phone: "090-0000-0090" });
+    expect(demo).toMatchObject({ city: "松山市", center_lat: 33.84, center_lng: 132.765, address: "愛媛県松山市二番町四丁目", phone: "090-0000-0090" });
     expect(JSON.parse(String(demo.region_cities))).toEqual(["東温市"]);
     expect(demo.region_km).toBeNull();
     expect(demo.office_number).toBeNull();
     expect(office("office-partner")).toMatchObject({ address: null, phone: null, region_cities: null });
     // 確認用の事業所（T144）も同じ値（デモ事業所と同じ種の事業所）
-    expect(office(YAM)).toMatchObject({ address: "愛媛県松山市みずほし町", phone: "090-0000-0090", region_cities: '["東温市"]' });
+    expect(office(YAM)).toMatchObject({ address: "愛媛県松山市二番町四丁目", phone: "090-0000-0090", region_cities: '["東温市"]' });
     expect(SEED_OFFICES.filter((o) => "address" in o).map((o) => o.id)).toEqual([DEMO_OFFICE_ID, CHECK_OFFICE_ID]);
   });
 
   it("デモ事業所の戻しは事業所の情報と地域（区域も）を種に戻す", () => {
     sqlite.exec(`UPDATE offices SET name = '変えた名前', address = '変えた所', phone = NULL, region_cities = NULL, region_km = 40, hazards = '["tsunami"]' WHERE id = '${DEMO_OFFICE_ID}'`);
     for (const s of demoResetStatements(AT)) sqlite.exec(s);
-    expect(office()).toMatchObject({ name: "デモ事業所", address: "愛媛県松山市みずほし町", phone: "090-0000-0090", region_km: null });
+    expect(office()).toMatchObject({ name: "デモ事業所", address: "愛媛県松山市二番町四丁目", phone: "090-0000-0090", region_km: null });
     expect(JSON.parse(String(office().region_cities))).toEqual(["東温市"]);
     // 区域は種に持たない（NULL = 架空の街の区域）
     expect(office().hazards).toBeNull();

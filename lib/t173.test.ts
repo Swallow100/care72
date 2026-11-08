@@ -102,7 +102,7 @@ describe("3. 編集の面（全部の面）", () => {
   it("全部の面に効く（面ごとの分岐が無い）。筋の手は面の名前つき", () => {
     expect(src).toContain("const sectionName = SECTION_LABELS[section]");
     const first = personaOf("first")!;
-    expect(first.goals.find((g) => g.id === "ledger")!.route).toEqual([{ click: "避難 編集" }, { type: "避難先1", text: "みずほし公民館" }, { click: "避難 保存" }]);
+    expect(first.goals.find((g) => g.id === "ledger")!.route).toEqual([{ click: "避難 編集" }, { type: "避難先1", text: "生石小学校" }, { click: "避難 保存" }]);
   });
 });
 

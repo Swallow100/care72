@@ -128,7 +128,7 @@ export function matchCity(text: string | null | undefined, prefHint?: string | n
 }
 
 /**
- * 所在地の文字（「愛媛県松山市みずほし町」）の頭の市区町村。都道府県があればその県の中で、一番長く頭に当たる名前（区のある市は区まで）。
+ * 所在地の文字（「愛媛県松山市二番町四丁目」）の頭の市区町村。都道府県があればその県の中で、一番長く頭に当たる名前（区のある市は区まで）。
  * 都道府県が無ければ名前が全国で 1 つのときだけ。当たらなければ null
  */
 export function municipalityOfAddress(text: string | null | undefined): Municipality | null {

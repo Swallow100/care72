@@ -206,12 +206,12 @@ describe("10 人分の文", () => {
 
   it("ほかの人の値: 夜も来る人、機関、行き方の徒歩、透析の病院、冷蔵庫の薬", () => {
     expect(blockText(sheetOf("p-02"), "who")).toBe(
-      "夫の 小林 健一さんが 車で 迎えに 来ます 090-0000-0013 / 夜も 来ます / かわなぎ訪問看護が 迎えに 来ます 090-0000-0014",
+      "夫の 小林 健一さんが 車で 迎えに 来ます 090-0000-0013 / 夜も 来ます / こはるび訪問看護が 迎えに 来ます 090-0000-0014",
     );
     expect(blockText(sheetOf("p-02"), "carry")).toBe("人工呼吸器 / 吸引器 / 予備の回路 / バッテリー / この 紙");
     expect(blockText(sheetOf("p-08"), "where")).toBe("うみなり高台の集会所 / 歩いて 行きます");
     expect(blockText(sheetOf("p-08"), "carry")).toBe("薬 インスリン（冷蔵庫） / 保冷バッグ / 血糖の測定器 / この 紙");
-    expect(blockText(sheetOf("p-03"), "call")).toContain("透析の 病院 みずほし透析クリニック 090-0000-0018");
+    expect(blockText(sheetOf("p-03"), "call")).toContain("透析の 病院 あおたけ透析クリニック 090-0000-0018");
     expect(blockText(sheetOf("p-03"), "call")).toContain("長女の 岡田 由美さん 090-0000-0017");
     expect(blockText(sheetOf("p-04"), "who")).toBe("民生委員の 清水 正子さんが 迎えに 来ます 090-0000-0019");
   });
