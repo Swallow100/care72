@@ -11,7 +11,7 @@
 
 ## 触り方
 
-ログインのあとの手順は [docs/GUIDE.md](docs/GUIDE.md) にあります。
+ログインのあとの手順は [docs/GUIDE.md](docs/GUIDE.md) にあります。AI の利用には支出の上限と呼び出しの回数の上限を設けてあるので、審査の間はすべての機能をそのまま試せます。訓練の「仮想」は Claude Managed Agents を使います（下の表）。
 
 ## 課題
 
