@@ -241,7 +241,7 @@ export async function extractIntake(
   const answers = await pool(chunks, opts.concurrency ?? chunks.length, (c) => askJson(buildExtractRequest(payload, c.sealed, opts.focus ?? null), ctx));
   // 避難先の番号は書類の手がかりで（T141、lib/intake/destination-order.ts。番号の無い 1 つだけの避難先を 2 に入れない）
   const value = orderDestinations(answers.length === 1 ? answers[0].value : mergeExtractOutputs(answers.map((a) => a.value)), input.ledger, text);
-  // 写した値の伏せ字は、入れた文と今の台帳の元の言葉に戻す（「（町名）小学校」→「かわなぎ小学校」。役割名は戻さない。T88）
+  // 写した値の伏せ字は、入れた文と今の台帳の元の言葉に戻す（「（町名）小学校」→ 町名を含む避難先。役割名は戻さない。T88）
   const restore = sourceRestorer([text, ...inputTexts(input)], key);
   // 特記は、写した文の入った塊の元の文に戻す
   const noteBack = (s: string) => {

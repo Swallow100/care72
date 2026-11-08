@@ -65,7 +65,7 @@ export type StartPerson = {
   facts?: ReadonlyArray<string>;
 };
 
-/** 上限を越える担当一覧の行に添える町と要点（「みずほし町・酸素・独居」） */
+/** 上限を越える担当一覧の行に添える町と要点（「北斎院町・酸素・独居」） */
 const personNote = (p: StartPerson): string => [p.town ?? null, ...(p.facts ?? [])].filter(Boolean).join("・");
 
 const SELECT =
@@ -418,7 +418,7 @@ export function StartButtons({
   );
 }
 
-/** 閉じた設定に添える選んだ物（「3 人・職員 1・夜間・地震 震度 6強・自宅 みずほし町」） */
+/** 閉じた設定に添える選んだ物（「3 人・職員 1・夜間・地震 震度 6強・自宅 北斎院町」） */
 function settingsSummary(total: number, chosen: number, staff: string, night: boolean, scale = "", home = ""): string {
   const s = scale !== "" ? scaleOfKey(scale) : null;
   return [

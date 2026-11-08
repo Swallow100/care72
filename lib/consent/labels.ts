@@ -45,7 +45,7 @@ export const COMPOSER_EXAMPLES = {
   examined: "例 救護所で診察",
   medication_given: "例 お薬手帳の薬を渡した",
   transported: "例 行き先 県立病院",
-  arrived_shelter: "例 避難所 かわなぎ小学校",
+  arrived_shelter: "例 避難所 福音小学校",
 } as const;
 
 /** 書き足しの断り（API の error と、画面に出す言葉） */

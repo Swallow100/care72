@@ -17,7 +17,10 @@ export const DEMO_REGION = "松山市";
 /** 地域の川（注記に名前のある、種のピンの周りの川） */
 export const DEMO_RIVERS: ReadonlyArray<string> = ["重信川", "石手川", "宮前川", "大川"];
 
-/** homes は種の台帳の町名（人の区画はピンで決める。これはピンの無い人の引き先と、文の中の町名の伏せ字） */
+/**
+ * homes は種の台帳の町名（人の区画はピンで決める。これはピンの無い人の引き先と、文の中の町名の伏せ字）。T189 から実在の町名
+ * （本人の家のピンを地理院の逆ジオコーダで引いた物）。前の架空の町の組を、そこにいた人の実在の町名の組にした（誰が当たるかは同じ）
+ */
 export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
   {
     town: "市坪・井門付近",
@@ -28,7 +31,7 @@ export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
     landslide: false,
     tsunami: false,
     hazardWords: "洪水 3〜10 m の想定（国管理河川の層）",
-    homes: ["かわなぎ町"],
+    homes: ["市坪西町", "北井門五丁目"],
   },
   {
     town: "余戸・南斎院付近",
@@ -39,7 +42,7 @@ export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
     landslide: false,
     tsunami: false,
     hazardWords: "洪水 0.5〜3 m の想定（国管理河川の層）",
-    homes: ["みずほし町"],
+    homes: ["久保田町", "北斎院町"],
   },
   {
     town: "和泉北付近",
@@ -50,7 +53,7 @@ export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
     landslide: false,
     tsunami: false,
     hazardWords: "洪水 0.5〜3 m の想定（国管理河川の層）",
-    homes: ["あしなみ町"],
+    homes: ["土居田町"],
   },
   {
     town: "石手・祝谷付近",
@@ -61,7 +64,7 @@ export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
     landslide: true,
     tsunami: false,
     hazardWords: "土砂災害の警戒区域（土石流）。洪水の想定なし",
-    homes: ["くぬぎ谷町"],
+    homes: ["常光寺町", "祝谷東町"],
   },
   {
     town: "大可賀付近",
@@ -72,7 +75,7 @@ export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
     landslide: false,
     tsunami: true,
     hazardWords: "津波 0.5〜1 m の想定。洪水 0.5 m 未満の想定",
-    homes: ["うみなり町", "しおかぜ町"],
+    homes: ["大可賀三丁目"],
   },
   {
     town: "西長戸・鴨川付近",
@@ -83,7 +86,7 @@ export const DEMO_TOWNS: ReadonlyArray<AreaTown> = [
     landslide: false,
     tsunami: false,
     hazardWords: "洪水 一部 0.5〜3 m の想定",
-    homes: ["そらみ台", "ほたる坂町"],
+    homes: ["西長戸町", "鴨川二丁目"],
   },
 ];
 
@@ -108,8 +111,8 @@ export const DEMO_FACILITIES: ReadonlyArray<AreaFacility> = [
 ];
 
 /**
- * やめた架空の地名（前の種。世界の文に出ないことを台の check とテストで見る）。種の台帳の町名は変えないが、世界の文には出さない。
- * 施設の名前は種のまま
+ * やめた架空の地名（前の種。世界の文に出ないことを台の check とテストで見る）。種の台帳の町名も T189 で実在の町名に替えた。
+ * 施設（医院・薬局など民間の連絡先）の名前は種の架空の名前のまま
  */
 export const RETIRED_DEMO_NAMES: ReadonlyArray<string> = [
   "白波川",
