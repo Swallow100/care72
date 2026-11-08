@@ -148,6 +148,32 @@ export function DrillControls({
   const autoText = `${clock ? CLOCK_LABELS.next : DRILL_LABELS.advance} ${intervalLabel(DEFAULT_FAST_MS, T59_LABELS.seconds)}${DRILL_LABELS.autoEvery}`;
   return (
     <div className="flex flex-wrap items-center gap-2" data-controls={clock ? "clock" : ""}>
+      {/* 幅の変わる字（AI の残り・進んだ時間・読込・失敗・自動進行の説明）はボタンの前に置く。上の帯は右寄せなので、後ろに置くと
+          進めるたびにボタンが左へずれ、同じ所を押し直すと「中断」に当たった（11/8 の通し点検） */}
+      {clock && left !== null && (
+        <span className="text-xs text-muted tabular-nums" data-ai-left={left}>
+          {CLOCK_LABELS.left} <span className="font-bold text-ink">{left}</span>
+        </span>
+      )}
+      {moved !== null && !stepping && !refreshing && (
+        <span role="status" className="text-sm tabular-nums" data-moved={moved.to - moved.from}>
+          <span className="text-muted">{CLOCK_LABELS.moved}</span> <span className="font-bold">{movedText(moved.to - moved.from)}</span>{" "}
+          <span className="text-muted" data-moved-span>
+            {minuteText(moved.from)} → {minuteText(moved.to)}
+          </span>
+        </span>
+      )}
+      {(stepping || refreshing) && <Loader72 label={WAIT_LABELS.think} size={18} on="base" className="text-sm text-muted" />}
+      {error && (
+        <span role="alert" className="text-sm font-bold text-danger">
+          {error}
+        </span>
+      )}
+      {fast && (
+        <span className="text-xs text-muted tabular-nums" data-fast-note>
+          {autoText}
+        </span>
+      )}
       {clock ? (
         <Button
           kind="main"
@@ -177,11 +203,6 @@ export function DrillControls({
       >
         {DRILL_LABELS.fastForward}
       </Button>
-      {fast && (
-        <span className="text-xs text-muted tabular-nums" data-fast-note>
-          {autoText}
-        </span>
-      )}
       {/* 中断はアプリ内の確認の窓で決めてから（T44）。最初の焦点は取消 */}
       <Button
         kind="danger"
@@ -194,25 +215,6 @@ export function DrillControls({
       >
         {DRILL_LABELS.abandon}
       </Button>
-      {clock && left !== null && (
-        <span className="text-xs text-muted tabular-nums" data-ai-left={left}>
-          {CLOCK_LABELS.left} <span className="font-bold text-ink">{left}</span>
-        </span>
-      )}
-      {moved !== null && !stepping && !refreshing && (
-        <span role="status" className="text-sm tabular-nums" data-moved={moved.to - moved.from}>
-          <span className="text-muted">{CLOCK_LABELS.moved}</span> <span className="font-bold">{movedText(moved.to - moved.from)}</span>{" "}
-          <span className="text-muted" data-moved-span>
-            {minuteText(moved.from)} → {minuteText(moved.to)}
-          </span>
-        </span>
-      )}
-      {(stepping || refreshing) && <Loader72 label={WAIT_LABELS.think} size={18} on="base" className="text-sm text-muted" />}
-      {error && (
-        <span role="alert" className="text-sm font-bold text-danger">
-          {error}
-        </span>
-      )}
     </div>
   );
 }

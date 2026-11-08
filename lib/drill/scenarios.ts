@@ -592,7 +592,7 @@ const HEAVY_RAIN: Scenario = {
 // ---------- 地震 ----------
 // 南海トラフ、震度 6 強、沿岸の津波、停電 2 日。8 井上が主役、1 山田・2 小林の電池。
 // 色の動き: 山田は連絡なしのまま酸素の内蔵電池で 3 時間に赤。小林は 3 時間に黄、6 時間に夫の緑（電池が切れたあと）で黄のまま。
-// 井上は高台の集会所で緑、インスリンの残り（手元の日数。発災から走る。冷蔵の時計は無く、保管は確認の欄）で 60 時間に黄。
+// 井上は指定避難所で緑、インスリンの残り（手元の日数。発災から走る。冷蔵の時計は無く、保管は確認の欄）で 60 時間に黄。
 
 const EARTHQUAKE: Scenario = {
   id: "earthquake",
@@ -615,13 +615,13 @@ const EARTHQUAKE: Scenario = {
       hour: 1,
       events: [
         {
-          change: { kind: "shelter", id: "sh-2", label: "高台の集会所", state: "open" },
-          text: "高台の集会所 受入開始",
+          change: { kind: "shelter", id: "sh-2", label: "指定避難所", state: "open" },
+          text: "指定避難所 受入開始",
           person: "p-08", who: WHO.insulin,
         },
       ],
       turns: [
-        { person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "shelter", saying: "高台の集会所に来た" },
+        { person: "p-08", who: WHO.insulin, color: "green", source: "agent", whereNow: "shelter", saying: "避難所に来た" },
         { person: "p-03", who: WHO.dialysis, color: "green", source: "family", whereNow: "home" },
         { person: "p-06", who: WHO.tubeFeeding, color: "green", source: "family", whereNow: "home" },
         { person: "p-09", who: WHO.any, color: "green", source: "agent", whereNow: "home", saying: "大丈夫" },
@@ -656,8 +656,8 @@ const EARTHQUAKE: Scenario = {
       hour: 9,
       events: [
         {
-          change: { kind: "shelter", id: "sh-2", label: "高台の集会所", state: "crowded" },
-          text: "高台の集会所 混雑 冷蔵庫なし",
+          change: { kind: "shelter", id: "sh-2", label: "指定避難所", state: "crowded" },
+          text: "指定避難所 混雑 冷蔵庫なし",
           person: "p-08", who: WHO.insulin,
         },
       ],
