@@ -24,8 +24,8 @@
   // 毎日 19:00 UTC（4:00 JST）にデモ事業所を種に戻す（lib/seed/cron.ts の DAILY_RESET_CRON と同じ文字）。
   // 5 分ごとに気象庁の防災情報 XML を取って D1 に写す（lib/jma/cron.ts の JMA_FETCH_CRON と同じ文字。T72）
   "triggers": { "crons": ["0 19 * * *", "*/5 * * * *"] },
-  // AI の 1 日の上限（デモ事業所だけに効く。lib/claude/usage.ts の dailyLimit）。既定は 200、デモ事業所は 600（docs/DECISIONS.md「配信と守り」）
-  "vars": { "AI_DAILY_LIMIT": "600" },
+  // AI の 1 日の上限（デモ事業所だけに効く。lib/claude/usage.ts の dailyLimit）。既定は 200、デモ事業所は 1500（11/8 に 600 から）（docs/DECISIONS.md「配信と守り」）
+  "vars": { "AI_DAILY_LIMIT": "1500" },
   "r2_buckets": [
     {
       "binding": "RECORDINGS",
