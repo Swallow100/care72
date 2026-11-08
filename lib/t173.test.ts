@@ -33,6 +33,9 @@ describe("1. 最初に戻す", () => {
     // 右の列の面に戻さない
     expect(page).not.toContain("<ResetSection");
   });
+  it("アンケートの面は壁の中（審査員と審査員が足したアカウント）に出さない", () => {
+    expect(page).toContain("{!actor.walled && <SurveyPanel overview=");
+  });
   it("窓の決める方に「戻す」を使わない（2 つの窓で同じ語だった）。何をするかの語で、取り違えない", () => {
     expect(CONFIRM_LABELS.resetOk).toBe("初期化");
     expect(CONFIRM_LABELS.normalOk).toBe("平時復帰");

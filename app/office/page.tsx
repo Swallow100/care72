@@ -210,8 +210,8 @@ export default async function OfficePage({ searchParams }: Props) {
           {/* 所属なし（T23）は引き受ける人がいるときだけ。担当の長い表の前に置く */}
           <UnaffiliatedSection people={unaffiliated} />
           <AssignSection people={officePeople} careManagers={careManagers} error={peopleError} moved={moved} />
-          {/* ケアマネ向けアンケートの招待のリンクと答え（T42） */}
-          <SurveyPanel overview={survey} origin={await requestOrigin()} />
+          {/* ケアマネ向けアンケートの招待のリンクと答え（T42）。審査員と審査員が足したアカウント（壁の中）には出さない（作者の調べ物で、審査で使わない） */}
+          {!actor.walled && <SurveyPanel overview={survey} origin={await requestOrigin()} />}
         </div>
         <div className="grid min-w-0 content-start gap-3">
           {/* 様式9 と使用様式は書類の画面（/forms）にまとめた（T147） */}
