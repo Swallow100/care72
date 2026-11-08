@@ -69,7 +69,7 @@ describe("開始の設定", () => {
     expect(html).not.toContain("data-start-options");
     expect(html).not.toContain("<details");
     expect(html).not.toContain('data-scenario="short"');
-    expect([...html.matchAll(/data-scenario="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["heavy_rain", "earthquake", "virtual"]);
+    expect([...html.matchAll(/data-scenario="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["earthquake", "heavy_rain", "virtual"]);
   });
 });
 

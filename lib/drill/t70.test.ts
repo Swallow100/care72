@@ -405,8 +405,8 @@ describe("押せる人なしと見込み（T70 の 2・5）", () => {
       ["n-5", true],
     ]);
     // 押せる人のいない人は、表の行が当たりうる想定だけ（仮想は表が無いので呼ばない）。始められる想定だけを並べる（10 分版は T124 で外した）
-    expect(five.find((p) => p.id === "n-4")!.callable).toEqual(["heavy_rain", "earthquake"]);
-    expect(five.find((p) => p.id === "n-1")!.callable).toEqual(["heavy_rain", "earthquake", "virtual"]);
+    expect(five.find((p) => p.id === "n-4")!.callable).toEqual(["earthquake", "heavy_rain"]);
+    expect(five.find((p) => p.id === "n-1")!.callable).toEqual(["earthquake", "heavy_rain", "virtual"]);
   });
 
   it("見込み = 刻み ×（監督 1 + 本人役）+ 講評 1 + 声（本人役 × 刻み の半分）。残りを超えたら上限不足", () => {

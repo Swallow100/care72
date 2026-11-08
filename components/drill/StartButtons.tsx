@@ -2,7 +2,7 @@
 
 // 訓練の開始（大雨想定・地震想定・仮想）。押すと 0 時間まで当てて保存し、訓練の画面へ。
 // 事業所に進行中があれば断られる（実施中あり）。そのときは一覧の進行中から再開か中断。
-// 並びは lib/drill の SCENARIO_ORDER のまま。主の操作の色は先頭（大雨想定）だけで、ほかは無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
+// 並びは lib/drill の SCENARIO_ORDER のまま。主の操作の色は先頭（地震想定）だけで、ほかは無色。押してから画面が移るまで、押したボタンに灰色を残す（data-pending）。
 // T124: 10 分版を外した（前からある 10 分版の記録は一覧・再生・紙で読める）。想定のボタンの下に進め方の 1 行
 // （訓練の画面の並びと同じ。T128 で訓練の画面の進め方を次までだけにしたので「進め方 次まで」、最後まで一通り見るのは自動進行＝次までの繰り返し）。
 //
@@ -117,7 +117,7 @@ export function StartButtons({
   const picked = people.filter((p) => chosen.has(p.id));
   // 押せる人なし（選んだ参加者のうち）
   const noPresser = picked.filter((p) => p.canPress === false).length;
-  // 主の操作の色は先頭の想定（SCENARIO_ORDER の大雨想定）だけ
+  // 主の操作の色は先頭の想定（SCENARIO_ORDER の地震想定）だけ
   const main = scenarios[0] ?? null;
 
   /** 選んだ物だけ（何も変えなければ undefined。送る物は前と同じ） */

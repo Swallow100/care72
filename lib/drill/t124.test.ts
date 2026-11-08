@@ -70,17 +70,17 @@ describe("開始の画面（components/drill/StartButtons）", () => {
   ];
   const draw = () => renderToStaticMarkup(createElement(StartButtons, { scenarios: SCENARIO_ORDER, disabled: false, people, ai: { kind: "ready", remaining: 200, limit: 200 } }));
 
-  it("始められる想定は大雨・地震・仮想の 3 つ。10 分版のボタンと見込みは無く、主の操作の色は先頭の大雨想定だけ", () => {
-    expect(SCENARIO_ORDER).toEqual(["heavy_rain", "earthquake", "virtual"]);
+  it("始められる想定は大雨・地震・仮想の 3 つ。10 分版のボタンと見込みは無く、主の操作の色は先頭の地震想定だけ", () => {
+    expect(SCENARIO_ORDER).toEqual(["earthquake", "heavy_rain", "virtual"]);
     expect(DRILL_SCENARIOS.filter(isStartScenario)).toEqual(["earthquake", "heavy_rain", "virtual"]);
     expect(isStartScenario("short")).toBe(false);
     const html = draw();
-    expect([...html.matchAll(/data-scenario="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["heavy_rain", "earthquake", "virtual"]);
+    expect([...html.matchAll(/data-scenario="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["earthquake", "heavy_rain", "virtual"]);
     expect(html).not.toContain(SCENARIO_LABELS.short);
     expect(html).not.toContain('data-estimate-scenario="short"');
-    // 主の操作の色（bg-accent-fill）は大雨想定のボタンだけ
+    // 主の操作の色（bg-accent-fill）は地震想定のボタンだけ
     const buttons = [...html.matchAll(/<button[^>]*data-scenario="([a-z_]+)"[^>]*>/g)];
-    expect(buttons.filter((m) => m[0].includes("bg-accent-fill")).map((m) => m[1])).toEqual(["heavy_rain"]);
+    expect(buttons.filter((m) => m[0].includes("bg-accent-fill")).map((m) => m[1])).toEqual(["earthquake"]);
   });
 
   it("進め方の 1 行は出さない（T184。切り替えでなく説明で、押せそうに見えて読み違えた）", () => {

@@ -752,7 +752,7 @@ export const SCENARIOS: Readonly<Record<DrillScenario, Scenario>> = {
  * 始められる想定の並び（開始のボタンの順。先頭が主の操作）。10 分版（short）は T124 で外した。
  * 前からある 10 分版の記録は SCENARIOS から読めるが、開始の API（lib/drill/http.ts の startPost）は断る
  */
-export const SCENARIO_ORDER: ReadonlyArray<DrillScenario> = ["heavy_rain", "earthquake", "virtual"];
+export const SCENARIO_ORDER: ReadonlyArray<DrillScenario> = ["earthquake", "heavy_rain", "virtual"];
 
 /** 新しく始められる想定か（開始の API の門。10 分版は前からある記録だけ） */
 export function isStartScenario(id: DrillScenario): boolean {
